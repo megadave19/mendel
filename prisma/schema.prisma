@@ -1,0 +1,65 @@
+// Mendel data model — TRD §10
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Scan {
+  id            String    @id @default(cuid())
+  repoUrl       String
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  status        String
+  issuesFound   Int       @default(0)
+  prsOpened     Int       @default(0)
+  totalTokens   Int       @default(0)
+  schemaVersion String
+  issues        Issue[]
+  agentLogs     AgentLog[]
+}
+
+model Issue {
+  id           String   @id @default(cuid())
+  scanId       String
+  scan         Scan     @relation(fields: [scanId], references: [id])
+  type         String
+  severity     String
+  confidence   String   // JSON stringified — SQLite has no native JSON
+  diagnosis    String   // JSON stringified
+  patch        String?  // JSON stringified
+  verification String?  // JSON stringified
+  notAnalyzed  String   // JSON stringified
+  prUrl        String?
+  status       String
+  createdAt    DateTime @default(now())
+}
+
+model AgentLog {
+  id         String   @id @default(cuid())
+  scanId     String
+  scan       Scan     @relation(fields: [scanId], references: [id])
+  issueId    String?
+  phase      String
+  toolName   String?
+  input      String   // JSON stringified
+  output     String   // JSON stringified
+  durationMs Int
+  tokensUsed Int?
+  createdAt  DateTime @default(now())
+}
+
+// v1.5
+model RejectionPattern {
+  id              String   @id @default(cuid())
+  depName         String?
+  changeType      String?
+  rejectionReason String
+  prUrl           String
+  createdAt       DateTime @default(now())
+  embedding       Bytes?
+}

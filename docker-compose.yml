@@ -1,0 +1,9 @@
+# Mendel sandboxes are spawned programmatically — see lib/sandbox/
+# Phase 1B will configure the actual Docker sandbox setup.
+# This file is a placeholder.
+
+services:
+  placeholder:
+    image: hello-world
+    profiles:
+      - never
