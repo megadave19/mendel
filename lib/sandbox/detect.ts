@@ -11,7 +11,7 @@ export function detectPackageManager(repoPath: string): PackageManager {
 export function installCommand(pm: PackageManager): string {
   switch (pm) {
     case 'pnpm':
-      return 'pnpm install --frozen-lockfile'
+      return 'pnpm install --frozen-lockfile --store-dir=/tmp/pnpm-store'
     case 'yarn':
       return 'yarn install --frozen-lockfile'
     case 'npm':
