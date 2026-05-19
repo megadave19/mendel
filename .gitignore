@@ -20,6 +20,9 @@ dist/
 workspace/
 logs/
 
+# pnpm content-addressable store (created by sandbox runs inside fixtures)
+.pnpm-store/
+
 # Database files
 prisma/*.db
 prisma/*.db-journal
