@@ -9,14 +9,15 @@ interface ScanRecord {
   id: string
   repoUrl: string
   status: string
-  createdAt: string
-  issueCount?: number
+  startedAt: string        // field name from Prisma schema
+  issuesFound?: number     // field name from Prisma schema
+  prsOpened?: number
   prUrl?: string
 }
 
 function statusColor(status: string): string {
   switch (status) {
-    case 'complete': return 'var(--accent-primary)'
+    case 'completed': return 'var(--accent-primary)'
     case 'running': return 'var(--accent-secondary)'
     case 'error': return 'var(--accent-danger)'
     default: return 'var(--text-muted)'
@@ -182,10 +183,10 @@ export default function DashboardPage() {
                 {repoName(scan.repoUrl)}
               </Link>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                {new Date(scan.createdAt).toLocaleDateString()}
+                {scan.startedAt ? new Date(scan.startedAt).toLocaleDateString() : '—'}
               </span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>
-                {scan.issueCount ?? '—'}
+                {scan.issuesFound ?? '—'}
               </span>
               <span style={{
                 fontFamily: 'var(--font-mono)',

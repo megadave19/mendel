@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     // Fire and forget — SSE route streams progress
     void runScan(scan.id, body.repoUrl, body.pat)
 
-    return NextResponse.json({ scanId: scan.id }, { status: 202 })
+    return NextResponse.json({ id: scan.id }, { status: 202 })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors }, { status: 400 })
