@@ -19,6 +19,8 @@ model Scan {
   prsOpened     Int       @default(0)
   totalTokens   Int       @default(0)
   schemaVersion String
+  /// AES-256-GCM encrypted GitHub PAT (iv:authTag:ciphertext, all hex)
+  encryptedPat  String?
   issues        Issue[]
   agentLogs     AgentLog[]
 }

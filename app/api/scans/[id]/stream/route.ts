@@ -1,5 +1,6 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getScanEmitter, type AgentEvent } from '@/lib/agent/runner'
+import { applyRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -13,6 +14,10 @@ function heartbeat(): string {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Rate limit SSE connections — same general cap (60/min)
+  const limited = applyRateLimit(_req, 'api')
+  if (limited) return limited as NextResponse
+
   const { id } = await params
 
   const stream = new ReadableStream({
