@@ -8,14 +8,19 @@ export function detectPackageManager(repoPath: string): PackageManager {
   return 'npm'
 }
 
-export function installCommand(pm: PackageManager): string {
+export function installCommand(pm: PackageManager, frozen = false): string {
   switch (pm) {
     case 'pnpm':
-      return 'pnpm install --frozen-lockfile --store-dir=/tmp/pnpm-store'
+      // frozen=true only for initial installs where lockfile is known-good;
+      // after patching package.json the lockfile is stale so we must update it
+      return frozen
+        ? 'pnpm install --frozen-lockfile --store-dir=/tmp/pnpm-store'
+        : 'pnpm install --no-frozen-lockfile --store-dir=/tmp/pnpm-store'
     case 'yarn':
-      return 'yarn install --frozen-lockfile'
+      return frozen ? 'yarn install --frozen-lockfile' : 'yarn install'
     case 'npm':
-      return 'npm ci'
+      // npm ci requires lockfile match; npm install updates it
+      return frozen ? 'npm ci' : 'npm install'
   }
 }
 

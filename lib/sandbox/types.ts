@@ -6,6 +6,8 @@ export interface SandboxConfig {
   packageManager: PackageManager
   phaseATimeoutMs?: number
   phaseBTimeoutMs?: number
+  /** Use --frozen-lockfile (true) or --no-frozen-lockfile (false, default for post-patch verify) */
+  frozenLockfile?: boolean
 }
 
 export interface SandboxPhaseResult {

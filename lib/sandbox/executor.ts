@@ -55,7 +55,7 @@ async function initVolumeOwnership(vol: string): Promise<void> {
 export async function runPhaseA(config: SandboxConfig): Promise<PhaseAResult> {
   const start = Date.now()
   const vol = volumeName(config.scanId)
-  const install = installCommand(config.packageManager)
+  const install = installCommand(config.packageManager, config.frozenLockfile ?? false)
 
   await initVolumeOwnership(vol)
 

@@ -98,6 +98,7 @@ async function main() {
     scanId: fixtureScanId,
     packageManager: fixturePm,
     phaseATimeoutMs: 3 * 60 * 1000,
+    frozenLockfile: true, // fixture lockfile is known-good
   })
 
   check(
