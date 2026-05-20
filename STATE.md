@@ -4,9 +4,9 @@
 
 ---
 
-## Current Phase: 1D — UI Polish
+## Current Phase: v1.0 COMPLETE — ready for v1.5
 
-**Status:** UI built, e2e pipeline verified live — finishing Gate 1D checklist
+**Status:** All security gaps closed, 24/24 tests, 7/7 smoke tests passing
 
 ---
 
@@ -71,7 +71,7 @@
 | 1A | ✅ | typecheck, lint, test green |
 | 1B | ✅ | 14/14 checks pass |
 | 1C | ✅ | 16/16 checks pass, Draft PR live |
-| 1D | 🔄 in progress | UI built + e2e live; 3 PRs + smoke test remaining |
+| 1D | ✅ | UI + smoke tests + prefers-reduced-motion + security hardening |
 
 ---
 
@@ -135,7 +135,13 @@ The in-browser runner uses the PAT from sessionStorage. Fine-grained PATs (like 
 
 ## Last Updated
 
-Phase 1D UI built + browser e2e confirmed — 2026-05-20
+v1.0 complete — 2026-05-20
+Security hardening: AES-256-GCM PAT encryption + in-memory rate limiting
+Tests: 24/24 unit, 7/7 smoke — all green
 Draft PRs live:
 - https://github.com/megadave19/mendel-test/pull/1 (gate-1c script)
 - https://github.com/megadave19/mendel-test/pull/2 (browser scan, live SSE confirmed)
+Still needed before declaring Gate 1D fully closed:
+- 3rd Draft PR on a different repo (scan redcartel/node-express-typescript-starter-2022 or GeekyAnts/express-typescript from browser)
+- Loom recording (< 3 min)
+- v1.0 case study writeup
