@@ -136,7 +136,9 @@ export default function NewScanPage() {
                 style={{
                   flex: 1,
                   background: 'var(--bg-2)',
-                  border: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
+                  borderTop: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
+                  borderBottom: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
+                  borderLeft: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
                   borderRight: 'none',
                   color: 'var(--text-primary)',
                   fontFamily: 'var(--font-mono)',

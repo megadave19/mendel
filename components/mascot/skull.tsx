@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 
 export type MascotState =
   | 'idle'
@@ -45,7 +45,7 @@ const STATE_COLORS: Record<MascotState, string> = {
 }
 
 // Eye contents per state — rendered inside the skull's eye sockets
-function Eyes({ state }: { state: MascotState }) {
+function Eyes({ state, reduced }: { state: MascotState; reduced: boolean }) {
   const color = STATE_COLORS[state]
 
   switch (state) {
@@ -53,11 +53,11 @@ function Eyes({ state }: { state: MascotState }) {
       return (
         <g>
           <motion.circle cx="25" cy="34" r="5" fill={color}
-            animate={{ cx: [19, 31, 19] }}
+            animate={reduced ? {} : { cx: [19, 31, 19] }}
             transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
           />
           <motion.circle cx="55" cy="34" r="5" fill={color}
-            animate={{ cx: [49, 61, 49] }}
+            animate={reduced ? {} : { cx: [49, 61, 49] }}
             transition={{ duration: 1.4, repeat: Infinity, ease: 'linear', delay: 0.7 }}
           />
         </g>
@@ -67,11 +67,11 @@ function Eyes({ state }: { state: MascotState }) {
       return (
         <g>
           <motion.circle cx="25" cy="34" r="4" fill={color}
-            animate={{ opacity: [1, 0.2, 1], scale: [1, 0.7, 1] }}
+            animate={reduced ? {} : { opacity: [1, 0.2, 1], scale: [1, 0.7, 1] }}
             transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
           />
           <motion.circle cx="55" cy="34" r="4" fill={color}
-            animate={{ opacity: [0.2, 1, 0.2], scale: [0.7, 1, 0.7] }}
+            animate={reduced ? {} : { opacity: [0.2, 1, 0.2], scale: [0.7, 1, 0.7] }}
             transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
           />
         </g>
@@ -93,11 +93,11 @@ function Eyes({ state }: { state: MascotState }) {
       return (
         <g>
           <motion.circle cx="25" cy="34" r="5" fill={color}
-            animate={{ scale: [1, 1.3, 1], opacity: [0.9, 1, 0.9] }}
+            animate={reduced ? {} : { scale: [1, 1.3, 1], opacity: [0.9, 1, 0.9] }}
             transition={{ duration: 0.4, repeat: Infinity }}
           />
           <motion.circle cx="55" cy="34" r="5" fill={color}
-            animate={{ scale: [1.3, 1, 1.3], opacity: [1, 0.9, 1] }}
+            animate={reduced ? {} : { scale: [1.3, 1, 1.3], opacity: [1, 0.9, 1] }}
             transition={{ duration: 0.4, repeat: Infinity }}
           />
         </g>
@@ -108,7 +108,7 @@ function Eyes({ state }: { state: MascotState }) {
         <g>
           {/* Left eye — normal */}
           <motion.circle cx="25" cy="34" r="5" fill={color}
-            animate={{ opacity: [1, 0.6, 1] }}
+            animate={reduced ? {} : { opacity: [1, 0.6, 1] }}
             transition={{ duration: 1.5, repeat: Infinity }}
           />
           {/* Right eye — magnifying glass */}
@@ -123,12 +123,12 @@ function Eyes({ state }: { state: MascotState }) {
         <g>
           {/* Star eyes */}
           <motion.text x="15" y="42" fontSize="16" fill={color} fontFamily="monospace"
-            animate={{ scale: [1, 1.2, 1], rotate: [0, 15, -15, 0] }}
+            animate={reduced ? {} : { scale: [1, 1.2, 1], rotate: [0, 15, -15, 0] }}
             transition={{ duration: 0.6, repeat: Infinity }}
             style={{ transformOrigin: '25px 34px' }}
           >★</motion.text>
           <motion.text x="45" y="42" fontSize="16" fill={color} fontFamily="monospace"
-            animate={{ scale: [1.2, 1, 1.2], rotate: [0, -15, 15, 0] }}
+            animate={reduced ? {} : { scale: [1.2, 1, 1.2], rotate: [0, -15, 15, 0] }}
             transition={{ duration: 0.6, repeat: Infinity }}
             style={{ transformOrigin: '55px 34px' }}
           >★</motion.text>
@@ -139,11 +139,11 @@ function Eyes({ state }: { state: MascotState }) {
       return (
         <g>
           <motion.text x="16" y="42" fontSize="16" fill={color} fontFamily="monospace" fontWeight="bold"
-            animate={{ opacity: [1, 0.3, 1] }}
+            animate={reduced ? {} : { opacity: [1, 0.3, 1] }}
             transition={{ duration: 0.5, repeat: Infinity }}
           >✕</motion.text>
           <motion.text x="46" y="42" fontSize="16" fill={color} fontFamily="monospace" fontWeight="bold"
-            animate={{ opacity: [0.3, 1, 0.3] }}
+            animate={reduced ? {} : { opacity: [0.3, 1, 0.3] }}
             transition={{ duration: 0.5, repeat: Infinity }}
           >✕</motion.text>
         </g>
@@ -160,11 +160,11 @@ function Eyes({ state }: { state: MascotState }) {
           <rect x="44" y="29" width="22" height="8" rx="4" fill="#1a1a1a" />
           {/* Sleepy pupils */}
           <motion.circle cx="25" cy="37" r="3" fill={color}
-            animate={{ opacity: [0.6, 0.3, 0.6] }}
+            animate={reduced ? {} : { opacity: [0.6, 0.3, 0.6] }}
             transition={{ duration: 3, repeat: Infinity }}
           />
           <motion.circle cx="55" cy="37" r="3" fill={color}
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
+            animate={reduced ? {} : { opacity: [0.3, 0.6, 0.3] }}
             transition={{ duration: 3, repeat: Infinity, delay: 0.4 }}
           />
         </g>
@@ -174,11 +174,11 @@ function Eyes({ state }: { state: MascotState }) {
       return (
         <g>
           <motion.circle cx="25" cy="34" r="5" fill={color}
-            animate={{ opacity: [0.9, 0.5, 0.9], r: [5, 4, 5] }}
+            animate={reduced ? {} : { opacity: [0.9, 0.5, 0.9], r: [5, 4, 5] }}
             transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
           />
           <motion.circle cx="55" cy="34" r="5" fill={color}
-            animate={{ opacity: [0.5, 0.9, 0.5], r: [4, 5, 4] }}
+            animate={reduced ? {} : { opacity: [0.5, 0.9, 0.5], r: [4, 5, 4] }}
             transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
           />
         </g>
@@ -187,7 +187,7 @@ function Eyes({ state }: { state: MascotState }) {
 }
 
 // Mouth shape varies by state
-function Mouth({ state }: { state: MascotState }) {
+function Mouth({ state, reduced }: { state: MascotState; reduced: boolean }) {
   switch (state) {
     case 'error':
       return (
@@ -205,7 +205,7 @@ function Mouth({ state }: { state: MascotState }) {
         <g>
           {/* Yawning O mouth */}
           <motion.ellipse cx="40" cy="70" rx="10" ry="8" fill="#0a0a0a" stroke="#555" strokeWidth="1.5"
-            animate={{ ry: [8, 12, 8] }}
+            animate={reduced ? {} : { ry: [8, 12, 8] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           />
           {/* Top teeth */}
@@ -222,7 +222,7 @@ function Mouth({ state }: { state: MascotState }) {
           {/* Bright teeth */}
           {[20, 28, 36, 44, 52].map((x, i) => (
             <motion.rect key={i} x={x} y={65} width={6} height={10} rx="2" fill="#c6ff3d" opacity={0.9}
-              animate={{ opacity: [0.9, 1, 0.9] }}
+              animate={reduced ? {} : { opacity: [0.9, 1, 0.9] }}
               transition={{ duration: 0.3, repeat: Infinity, delay: i * 0.08 }}
             />
           ))}
@@ -255,8 +255,10 @@ const FLOAT_VARIANTS = {
 }
 
 export function Skull({ state = 'idle', size = 80, className, showLabel = false }: SkullProps) {
+  const reduced = useReducedMotion() ?? false
   const glowColor = STATE_COLORS[state]
-  const animation = FLOAT_VARIANTS[state]
+  // When reduced motion is preferred, skip all floating/shake animations
+  const animation = reduced ? {} : FLOAT_VARIANTS[state]
 
   return (
     <div className={className} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
@@ -291,13 +293,13 @@ export function Skull({ state = 'idle', size = 80, className, showLabel = false 
           <ellipse cx="40" cy="50" rx="4.5" ry="6" fill="#0a0a0a" />
 
           {/* ── Eyes (state-driven) ── */}
-          <Eyes state={state} />
+          <Eyes state={state} reduced={reduced} />
 
           {/* ── Jaw line separator ── */}
           <line x1="18" y1="58" x2="62" y2="58" stroke={glowColor} strokeWidth="1" opacity={0.4} />
 
           {/* ── Mouth / teeth ── */}
-          <Mouth state={state} />
+          <Mouth state={state} reduced={reduced} />
 
           {/* ── Cheekbone highlights ── */}
           <ellipse cx="18" cy="46" rx="4" ry="3" fill={glowColor} opacity={0.08} />
@@ -313,7 +315,7 @@ export function Skull({ state = 'idle', size = 80, className, showLabel = false 
       {showLabel && (
         <motion.p
           key={state}
-          initial={{ opacity: 0, y: 4 }}
+          initial={reduced ? false : { opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           style={{
             fontFamily: 'var(--font-mono)',
