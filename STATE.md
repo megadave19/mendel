@@ -87,6 +87,16 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-21 (D2 — S1 redesigned against reference design language)**
+- **First D2 pass was AI-slop** (flat 1px panels, monotone, broken-looking placeholder). PM rejected. Root cause: built from text descriptions of references never actually viewed + didn't use design skills.
+- **Owner supplied 3 reference design languages** (pixel-hand interactive UI, Hashgraph crystal hero, unified summary). Distilled philosophy: pure-black infinite canvas, ONE isolated hero, light glows from WITHIN objects, motion is material (assemble/shatter/morph — physical consequence per state change), corner HUD overlays (ms timer, cycling state word), extreme type hierarchy, the canvas breathes.
+- **Reconciliation:** kept Mendel's semantic palette (lime/amber/danger = confidence, CLAUDE.md §5b non-negotiable); applied the references' *treatment* to our lime rather than adopting their pink/purple.
+- **Invoked `ui-ux-pro-max` skill** — confirmed JetBrains Mono + dark/phosphor + "avoid flat design without depth."
+- **New S1 hero: `PixelSkullHero`** (canvas 2D) — Bones assembles from a particle cloud onto a sampled skull pixel-grid, then a wireframe ghost-skull traces in; ambient comet particles drift continuously. Solves TWO problems: nails the "this is a thing" payoff AND replaces the broken placeholder with something intentional. The owner's eventual 3D model can slot into this hero slot later.
+- **S1 rebuilt** with corner HUD (MENDEL//v1.0 pill, ◇ cycling state word, live ms uptime timer, DRAFT-ONLY flag), extreme type, single glowing accent, pure black.
+- **Verified visually via Claude Preview** (screenshotted the running page — first time actually *looking* at output). Skull reads clearly; composition holds. typecheck/lint clean.
+- **S4 (Live Console) NOT yet re-treated to this bar** — still the earlier three-pane build. Next: apply the same reference language to S4 after PM approves S1 direction.
+
 **2026-05-21 (D2 — S1 boot + S4 Live Console built)**
 - **Phase D component library created** under `components/phase-d/`: `ScanlineOverlay`, `PanelFrame`, `StatusPill`, `StageLane`, `TerminalLog`, `CommandBar`, `DepGraph3D`, plus shared `types.ts` (Phase/Stage/LogLine + PHASE_TO_POSE map). Hooks: `use-type-on` (DESIGN.md §7 type-on), `use-mock-scan` (scripted scan playback).
 - **S1 rebuilt** (`app/(marketing)/page.tsx`) as a real boot sequence per DESIGN.md §7: CRT power-on (canvas scale + scanline-noise fade) → mascot phosphor-warm → type-on wordmark → headline drift → staggered corner labels → interactive at ~3.3s. Reduced-motion jumps straight to interactive.
