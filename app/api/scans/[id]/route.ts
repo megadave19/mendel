@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { applyRateLimit } from '@/lib/rate-limit'
+import { dbIssueToVM } from '@/lib/agent/issue-vm'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const limited = applyRateLimit(req, 'api')
@@ -20,7 +21,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       totalTokens: true,
       schemaVersion: true,
       issues: true,
-      agentLogs: true,
       // encryptedPat intentionally omitted — never returned to client
     },
   })
@@ -29,5 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Scan not found' }, { status: 404 })
   }
 
-  return NextResponse.json(scan)
+  // Map persisted DB issues → frontend IssueVM so the client renders real data.
+  const { issues, ...rest } = scan
+  return NextResponse.json({ ...rest, issues: issues.map(dbIssueToVM) })
 }

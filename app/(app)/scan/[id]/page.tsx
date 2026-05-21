@@ -24,7 +24,8 @@ import { CommandBar } from '@/components/phase-d/CommandBar'
 import { StatusPill } from '@/components/phase-d/StatusPill'
 import { IssueCard } from '@/components/phase-d/IssueCard'
 import { PHASE_TO_POSE, type IssueVM } from '@/components/phase-d/types'
-import { useMockScan, MOCK_DEPS } from '@/hooks/use-mock-scan'
+import { MOCK_DEPS } from '@/hooks/use-mock-scan'
+import { useScanView } from '@/hooks/use-scan-view'
 
 const SUBSTATE: Record<string, string> = {
   SCAN: 'reading manifest · querying registry',
@@ -42,7 +43,9 @@ function fmtElapsed(ms: number): string {
 
 export default function ScanPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const scan = useMockScan(true)
+  // Demo id → scripted mock; any real scan id → live SSE stream (same shape).
+  const scan = useScanView(id)
+  const isDemo = id === 'demo'
   const pose = PHASE_TO_POSE[scan.phase]
 
   // Track which issues have had a Draft PR opened (S7 inline morph). Mock: assigns
@@ -125,7 +128,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
                   issue={iss}
                   context="running"
                   defaultExpanded={scan.done}
-                  onOpenPR={handleOpenPR}
+                  /* Manual action only in the demo; real scans auto-open the PR. */
+                  onOpenPR={isDemo ? handleOpenPR : undefined}
                 />
               ))}
             </div>

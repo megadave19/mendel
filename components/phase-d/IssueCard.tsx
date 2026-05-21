@@ -129,31 +129,37 @@ export function IssueCard({ issue, context = 'rest', defaultExpanded = false, on
                     </ul>
                   </div>
 
-                  <DiffViewer filePath={issue.filePath} diff={issue.diff} context={context} />
+                  {issue.diff.length > 0 && <DiffViewer filePath={issue.filePath} diff={issue.diff} context={context} />}
                   <NotAnalyzedCallout items={issue.notAnalyzed} context={context} />
 
-                  {/* Actions */}
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <button onClick={() => onOpenPR?.(issue)} className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.625rem' }}>
-                      Open Draft PR →
-                    </button>
-                    <button
-                      onClick={() => onReject?.(issue)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        border: '1px solid var(--border-strong)',
-                        background: 'transparent',
-                        color: 'var(--text-muted)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.625rem',
-                        letterSpacing: '0.1em',
-                        textTransform: 'uppercase',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Reject
-                    </button>
-                  </div>
+                  {/* Actions — only in interactive/demo mode. In the real autonomous
+                      flow the agent opens the PR itself, so no manual button (it
+                      surfaces via the 'pr' event → S7 state). */}
+                  {onOpenPR && (
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <button onClick={() => onOpenPR(issue)} className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.625rem' }}>
+                        Open Draft PR →
+                      </button>
+                      {onReject && (
+                        <button
+                          onClick={() => onReject(issue)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            border: '1px solid var(--border-strong)',
+                            background: 'transparent',
+                            color: 'var(--text-muted)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.625rem',
+                            letterSpacing: '0.1em',
+                            textTransform: 'uppercase',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Reject
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>

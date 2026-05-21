@@ -16,6 +16,7 @@ import {
 } from '@/lib/sandbox/executor'
 import { detectPackageManager } from '@/lib/sandbox/detect'
 import { db } from '@/lib/db'
+import { persistIssueData } from './issue-vm'
 
 // ─── Event bus ───────────────────────────────────────────────────────────────
 
@@ -197,6 +198,7 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
 
       // ── SUBMIT ──────────────────────────────────────────────────────────────
       emit({ type: 'phase', phase: 'SUBMIT' })
+      let prUrl: string | undefined
       try {
         const result = await submitDraftPR(
           repoPath,
@@ -212,12 +214,24 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
           log,
         )
 
+        prUrl = result.prUrl
         if (!result.skipped) {
           prsOpened++
           emit({ type: 'pr', url: result.prUrl, branch: result.branchName })
         }
       } catch (submitErr) {
         log(`PR submission failed: ${String(submitErr)}`)
+      }
+
+      // ── PERSIST ─────────────────────────────────────────────────────────────
+      // Store the finding so permalinks + playback (S5/S6/S7) render real data.
+      // persistIssueData enforces §5b: medium confidence + Not-Analyzed disclosures.
+      try {
+        await db.issue.create({
+          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl }),
+        })
+      } catch (persistErr) {
+        log(`Issue persist failed: ${String(persistErr)}`)
       }
     }
 

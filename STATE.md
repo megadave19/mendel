@@ -41,7 +41,7 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 | --- | --- | --- |
 | D1 — Doc + assets | DESIGN.md ✅, MascotWidget placeholder + abstraction boundary ✅, mascot 3D model owner-side (async), ref screenshots pending | 🟢 Code-side complete; mascot art async/non-blocking |
 | D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟢 Built — awaiting PM visual review |
-| D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components per DESIGN.md §12.1 | 🟢 UI built (mock data); real-stream + real-issue wiring is the follow-up |
+| D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components + REAL data wiring | ✅ UI + real-stream + persistence wired |
 | D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | ⬜ Not started |
 
 **D1 progress detail:**
@@ -58,12 +58,14 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-**D3 follow-up wiring (functional, not visual):**
-1. Reconnect real `useScanStream(id)` into the S4 three-pane layout — map AgentEvent (phase/log/issue/verify/pr/done) → the view model; keep mock only for `id === 'demo'`.
-2. Map DB `Issue` (JSON-stringified fields) → `IssueVM` in GET /api/scans/[id]; permalink routes + S4 playback read real data instead of MOCK_ISSUE.
-3. Then D4 (rest-mode screens: PAT modal, New Scan, Dashboard, Settings) — or hand off for external visual re-skin per PM's plan.
+D3 real-data wiring is **done** (live stream → S4, issues persisted, API maps to IssueVM). Remaining Phase D work:
 
-**Deferred (PM plan):** visual polish / Awwwards-bar treatment to be done later with a dedicated design tool. Claude's role: keep structure clean + functional.
+1. **End-to-end smoke test of a real scan** through the new S4 (paste a repo at /scan/new → confirm live stream renders in three-pane + issue card enriches on completion + permalinks show real data). Needs a classic PAT with `repo` scope in session.
+2. **D4 — rest-mode screens** (PAT modal, New Scan, Dashboard, Settings) structurally, OR hand off for the external visual re-skin per PM's plan.
+3. **Optional:** permalink pages still render MOCK_ISSUE — switch them to fetch GET /api/scans/[id] and select by issueId/prId for fully real permalinks.
+4. **Optional:** real dep-graph data (§15 Q3) — currently MOCK_DEPS visual.
+
+**Deferred (PM plan):** visual polish / Awwwards-bar treatment later with a dedicated design tool. Claude's role: keep structure clean + functional.
 
 ---
 
@@ -95,6 +97,16 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-21 (D3 — real data wiring complete)**
+- **Discovered the runner never persisted Issue rows** — only updated scan counts. So GET /api/scans/[id] always returned empty issues; no issue detail was stored anywhere. Fixed.
+- **`lib/agent/issue-vm.ts`** — single source for (a) `persistIssueData()` building the DB blobs and (b) `dbIssueToVM()` parsing them back (Zod-validated). Enforces §5b: confidence always "medium", Not-Analyzed disclosures always present. Diff preview = manifest version bump + per-file explanations (full-file rewrites don't yield a cheap line diff).
+- **Runner persists each finding** via `db.issue.create` after SUBMIT (captures prUrl). Wrapped in try/catch so a persist failure doesn't abort the scan.
+- **GET /api/scans/[id]** now returns `issues: IssueVM[]` (mapped); raw DB issues never leak to client.
+- **`hooks/use-scan-view.ts`** — unified view model. `id === 'demo'` → mock (interactive demo); any real id → live SSE via useScanStream, mapping AgentEvent → phase/log/issue cards, then fetches GET /api/scans/[id] on completion to enrich cards with persisted diagnosis/diff/Not-Analyzed. Both hooks always called (rules-of-hooks safe); args disable the unused one.
+- **S4 uses `useScanView(id)`.** Manual "Open Draft PR" button only in demo — real scans are autonomous (agent opens the PR; UI observes via the 'pr' event → S7 state). IssueCard hides action buttons when no `onOpenPR` handler is passed.
+- **Verified:** typecheck + lint clean, 29/29 tests, build 13/13 routes.
+- **Note:** dep graph still renders MOCK_DEPS in both modes (the SSE stream doesn't carry the full dep tree; real dep-graph data is a separate task, §15 Q3). Live issue cards show "Diagnosing…" placeholders until the on-done enrichment fetch returns full detail.
 
 **2026-05-21 (D3 — S5/S6/S7 inline + permalink, UI built)**
 - **PM called the frontend polish a poor use of time/tokens** and chose to: build structure/functionality now, re-skin visuals later with a tool better suited to design. Pivoted from visual iteration to functional buildout. Components kept well-structured + on-brand-enough for easy re-skinning.
