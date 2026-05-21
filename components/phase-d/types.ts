@@ -1,0 +1,33 @@
+/**
+ * Shared types for Phase D running-mode components (S4 Live Console).
+ * DESIGN.md §10, §11 S4, §12.
+ */
+
+import type { MascotPose } from '@/components/MascotWidget'
+
+/** The four work stages shown in the StageLane (DESIGN.md §11 S4). */
+export type Stage = 'SCAN' | 'DIAGNOSE' | 'PATCH' | 'VERIFY'
+
+export const STAGES: Stage[] = ['SCAN', 'DIAGNOSE', 'PATCH', 'VERIFY']
+
+/** Lifecycle phase the console can be in. `done` and `error` are terminal. */
+export type Phase = Stage | 'DONE' | 'ERROR'
+
+/** Map a phase to the mascot pose it should drive (DESIGN.md §8 ↔ §11 S4). */
+export const PHASE_TO_POSE: Record<Phase, MascotPose> = {
+  SCAN: 'scanning',
+  DIAGNOSE: 'thinking',
+  PATCH: 'patching',
+  VERIFY: 'verifying',
+  DONE: 'success',
+  ERROR: 'error',
+}
+
+/** A single streaming log line in the TerminalLog. */
+export interface LogLine {
+  id: string
+  stage: Phase
+  text: string
+  /** ms since scan start, for the timestamp column. */
+  t: number
+}

@@ -40,7 +40,7 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | D1 — Doc + assets | DESIGN.md ✅, MascotWidget placeholder + abstraction boundary ✅, mascot 3D model owner-side (async), ref screenshots pending | 🟢 Code-side complete; mascot art async/non-blocking |
-| D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟡 Starting (placeholder mascot) |
+| D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟢 Built — awaiting PM visual review |
 | D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components per DESIGN.md §12.1 | ⬜ Not started |
 | D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | ⬜ Not started |
 
@@ -58,14 +58,16 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-**Start D2 — S1 boot sequence + S4 Live Console rebuild — using the MascotWidget placeholder.**
-The mascot 3D model is being built owner-side (async, non-blocking). All D2 screens integrate against `<MascotWidget pose={...} />`; the placeholder stands in until the model lands.
+**PM visual review of D2** — open in browser (dev server on :3000):
+- `/` — S1 boot sequence. Watch the power-on → mascot → type-on MENDEL → reveal. Should feel like equipment booting, "this is a thing" within ~4s.
+- `/scan/demo` (any id) — S4 Live Console. Confirm all three panes animate together: mascot pose changes per phase, stage lane advances SCAN→DIAGNOSE→PATCH→VERIFY, log streams with type-on, 3D dep graph rotates + active node pulses. Press F5 to replay.
+- Check `prefers-reduced-motion` (macOS: System Settings → Accessibility → Display → Reduce motion) — S1 should jump straight to interactive.
 
-**Parallel, owner-side (non-blocking):**
-- Build the 3D mascot model. Share the exported file (`.glb`/`.gltf`) when ready → Claude wires it into MascotWidget behind the existing `pose` interface.
-- Collect .mov reference screenshots → fold into DESIGN.md §7 (DESIGN.md §15 Q5).
+Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?" (DESIGN.md §14).
 
-**Scaffold sign-off:** ✅ PM confirmed `/dev/mascot` works ("scaffold looks good") on 2026-05-21.
+**Then D3** — S5/S6/S7 inline issue cards + permalink routes + reconnect real `useScanStream` into the S4 layout (replaces the mock driver for live scans).
+
+**Parallel, owner-side (non-blocking):** 3D mascot model → share `.glb`/`.gltf` when ready. Collect .mov refs → DESIGN.md §7 (§15 Q5).
 
 ---
 
@@ -84,6 +86,14 @@ The mascot 3D model is being built owner-side (async, non-blocking). All D2 scre
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-21 (D2 — S1 boot + S4 Live Console built)**
+- **Phase D component library created** under `components/phase-d/`: `ScanlineOverlay`, `PanelFrame`, `StatusPill`, `StageLane`, `TerminalLog`, `CommandBar`, `DepGraph3D`, plus shared `types.ts` (Phase/Stage/LogLine + PHASE_TO_POSE map). Hooks: `use-type-on` (DESIGN.md §7 type-on), `use-mock-scan` (scripted scan playback).
+- **S1 rebuilt** (`app/(marketing)/page.tsx`) as a real boot sequence per DESIGN.md §7: CRT power-on (canvas scale + scanline-noise fade) → mascot phosphor-warm → type-on wordmark → headline drift → staggered corner labels → interactive at ~3.3s. Reduced-motion jumps straight to interactive.
+- **S4 rebuilt** (`app/(app)/scan/[id]/page.tsx`) as the three-pane Live Console (DESIGN.md §11 S4): [mascot+state+stats] | [stage lane + streaming log] | [3D dep graph], over an F-key CommandBar. Driven by `useMockScan` so all three panes animate end-to-end (D2 gate).
+- **DepGraph3D uses VANILLA Three.js, not R3F.** Reason: `@react-three/fiber@8` targets React 18 and breaks under this project's React 19; `three@0.170` is React-agnostic. Visual outcome matches DESIGN.md §9. **Deviation from §9's "R3F" wording — should be reflected in DESIGN.md §9 when next editing the doc.**
+- **S4 is mock-driven for D2.** The real `useScanStream` reconnection + inline issue cards (S5/S6/S7) are D3. Mock and live share the `Phase`/`LogLine` shapes so the swap is contained. **Interim regression: real scans submitted from /scan/new currently show the mock playback, not their live data — resolved in D3.**
+- **Verification:** `pnpm build` passes (10/10 routes prerender, no SSR errors), typecheck + lint clean, 29/29 tests. Runtime WebGL/boot visuals pending PM in-browser review.
 
 **2026-05-21 (later — mascot tooling pivot: Rive → 3D model)**
 - **§15 Q2 re-opened and re-decided.** Rive 2D was unworkable for a no-cost solo-PM project: it requires drawing + rigging a multi-part character (designer skills), and Rive's AI agent code-gen path crashes on their own backend. Owner is building a **3D model** themselves instead.
