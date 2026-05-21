@@ -50,3 +50,7 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright test artifacts
+test-results/
+playwright-report/

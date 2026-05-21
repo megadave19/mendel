@@ -1,10 +1,21 @@
+# PRD — Mendel
+
 # PRD — Mendel: Autonomous OSS Maintenance Agent
 
-> Product Requirements Document | **Revision 3** | Last updated 2026-05-18
+> Product Requirements Document | **Revision 4** | Last updated 2026-05-20
+> 
 
 ---
 
 ## 0. Revisions Log
+
+**Rev 4 (2026-05-20)** — post-v1.0-ship review + design iteration insertion. Major changes:
+
+- v1.0 ships functionally (agent works, real Draft PRs landed on `megadave19/mendel-test` for axios + typescript upgrades). UI shipped but does not earn the cyberpunk-CRT positioning — "AI-slop" execution.
+- Three v1.0 screens never built: S5 Issues List, S6 Fix Detail, S7 PR Confirmation. The screens where calibrated-confidence positioning lives. v1.0 functionally complete; product-completeness incomplete.
+- **Phase D (Design Iteration)** inserted between v1.0 and v1.5. Produces [DESIGN.md](http://design.md/), redesigns shipped screens, builds the missing S5/S6/S7 as inline states + permalink routes.
+- Screen architecture revised: S5/S6/S7 fold into S4 (Live Console) as inline states. Permalink routes (`/scan/[id]`, `/scan/[id]/issue/[id]`, `/scan/[id]/pr/[id]`) reuse the same components for shareable URLs.
+- v1.5 scope unchanged but now starts after Phase D ships.
 
 **Rev 3 (2026-05-18)** — second CTO-review pass + capability honesty pass. Major revisions:
 
@@ -64,10 +75,13 @@ Trust model is the same in both phases: *"the agent shows you exactly what it kn
 ## 5. Positioning
 
 > **v1.0:** *"Dependabot version-bumps; Mendel ships a working migration patch as a starting point — explicit about needing your review."*
+> 
 
 > **v1.5:** *"Dependabot tells you a dep is stale; Mendel ships the upgrade with breaking-change patches already applied, tested, scored for confidence via dual independent signals, and honest about what it didn't analyze."*
+> 
 
 > **Always:** *"Mendel isn't smarter than your developers. It's tireless, consistent, and honest about its uncertainty."*
+> 
 
 ## 6. Target Users
 
@@ -159,7 +173,7 @@ PAT entry, scopes `repo` + `read:user`; AES-256-GCM encryption at rest; validate
 **Single signal (changelog parsing):**
 
 - Scans `package.json` for outdated deps via npm registry
-- Fetches changelog (GH releases → fallback CHANGELOG.md)
+- Fetches changelog (GH releases → fallback [CHANGELOG.md](http://CHANGELOG.md))
 - LLM extracts breaking changes with Zod-validated structured output
 - AST analysis finds usage sites in repo
 
@@ -231,12 +245,16 @@ Asymmetric scoring:
 | --- | --- | --- | --- |
 | Both signals agree | 85–95 | high | — |
 | AST/semantic catches it, changelog silent | **65–75** | medium-high | "undocumented breaking change" |
-| Changelog claims, AST doesn't confirm, good coverage (≥ 80%) | 40–55 | low-medium | "needs manual verification" |
+| Changelog claims, AST doesn't confirm, good coverage | 40–55 | low-medium | "needs manual verification" |
 | Changelog claims, AST silent (JS-only / poor coverage) | 55–65 | medium | "incomplete analysis" |
-| Only changelog available (Signal B not runnable) | 55–65 | medium | "single-signal" |
+| Only changelog available (semantic diff not runnable) | 55–65 | medium | "single-signal" |
 | Heuristic match only | 30–45 | low | — |
 
 Per-patch adjustments: -15 if uncovered lines touched, -10 if behavioral changes, +10 if < 5 lines.
+
+Verification result gates the bucket (failure caps at "low").
+
+User-configurable threshold for auto-PR vs. Draft.
 
 ### F14: Search-Replace Block Patching [v1.5]
 
@@ -283,6 +301,8 @@ Per-patch adjustments: -15 if uncovered lines touched, -10 if behavioral changes
 
 ## 13. UX / UI Design Language
 
+(Unchanged across phases — design is shipped in v1.0 in full.)
+
 ### Aesthetic
 
 Cyberpunk + oldschool CRT. Pixel-art mascot, scan-line overlays, terminal aesthetics elevated. Reference: Akash Malhotra's 3D portfolio. Awwwards-tier. Dark mode only.
@@ -316,7 +336,7 @@ Every state animated; spring easing (stiffness 280, damping 28); GSAP timelines 
 
 ### Confidence Visualization
 
-- **v1.0**: All confidence badges show amber "medium — needs review"
+- **v1.0**: All confidence badges show amber "medium — needs review" — visual reinforcement of the v1.0 framing
 - **v1.5**: Color-coded confidence meters (lime/amber/red), signal-source pills, "Not Analyzed" callout with amber border (always visible, never hidden)
 
 ### Mascot Animation States
@@ -334,17 +354,21 @@ Every state animated; spring easing (stiffness 280, damping 28); GSAP timelines 
 | Failure | Head shake, visor red | v1.0 |
 | Error | Static/glitch overlay | v1.0 |
 
-## 14. Screens
+## 14. Screens (revised in Rev 4 — hybrid architecture)
 
-- **S1 Landing/Auth** — full-bleed dark, mascot center, hero copy, "Connect GitHub" CTA
-- **S2 PAT Entry Modal** — glassmorphic, step-by-step instructions
-- **S3 Repo Picker** — large centered input, format validation, recent repos
-- **S4 Live Agent Console** — three-pane: mascot/state, reasoning stream, 3D graph
-- **S5 Issues List** — cards with confidence badges (v1.0: all amber; v1.5: calibrated colors)
-- **S6 Fix Detail View** — diagnosis, plan, diff, verification results, "Not Analyzed" callout
-- **S7 PR Confirmation** — real PR URL preview, "View on GitHub" CTA
-- **S8 Dashboard** — hero stats (v1.5 adds regression rate + confidence trends)
-- **S9 Settings** — PAT, API key, threshold (v1.5), UI toggles
+The screen list collapses from 9 to 6 routes. S5, S6, S7 become inline states within S4 + permalink routes that reuse the same components. See [DESIGN.md](http://design.md/) §10 for the full architecture rationale.
+
+**Routes:**
+
+- `/` — **S1 Landing / Boot sequence**
+- `/scan/new` — **S3 New Scan** (S2 PAT modal overlays here)
+- `/scan/[id]` — **S4 Live Console** (absorbs S5 streaming + S6 expansion + S7 confirmation inline)
+- `/scan/[id]/issue/[id]` — **S6 permalink** (static fix detail for case study links)
+- `/scan/[id]/pr/[id]` — **S7 permalink** (PR confirmation, post-hoc)
+- `/dashboard` — **S8 Dashboard**
+- `/settings` — **S9 Settings**
+
+Full per-screen briefs live in [DESIGN.md](https://www.notion.so/Design-md-Mendel-366a2e9f37e28064adb1ddc03bfcbedd?pvs=21) §11.
 
 ## 15. Edge Cases
 
@@ -355,29 +379,31 @@ Every state animated; spring easing (stiffness 280, damping 28); GSAP timelines 
 | Non-TS-typed repo (no tsconfig.json) | **v1.0:** Reject. **v1.5:** Accept with explicit lower-confidence framing |
 | Gemini rate limit | Queue + backoff; user notified |
 | GitHub rate limit | Same |
-| Phase A install fails | **v1.0:** Surface install logs; don't proceed; suggest trying a different repo. **v1.5:** Offer to retry with extended network allowlist |
+| **Phase A install fails (e.g., postinstall hits non-allowlisted host)** | **v1.0:** Surface install logs with explanation; don't proceed; suggest trying a different repo. **v1.5:** Offer to retry with extended network allowlist |
 | Tests fail after patch | No PR; show failure logs |
-| Signals disagree | **v1.0:** N/A (single signal). **v1.5:** Confidence drops per asymmetric scoring |
+| Signals disagree | **v1.0:** N/A (single signal). **v1.5:** Confidence drops per asymmetric scoring; surface diagnosis only if low |
 | Existing open PR for same dep | Surface existing PR URL; offer "Force new PR" override |
 | LLM outputs invalid JSON | Retry up to 3 times with format-error feedback |
 | Concurrent scans on same repo | UI prevents (scan button disabled while scan running) |
 
 ## 16. Open Questions
 
-- **v1.0 Draft-PR default**: ship every PR as Draft, requiring user to mark "Ready for Review"? *(Lean yes)*
-- v1.5 confidence threshold default: permissive or conservative? *(Lean conservative)*
+- **v1.0 Draft-PR default**: ship every PR as Draft, requiring user to mark "Ready for Review"? *(Lean yes — reinforces medium-confidence framing)*
+- v1.5 confidence threshold default: permissive (more auto-PRs) or conservative (more drafts)? *(Lean conservative)*
 - Mascot personality: subtle dry humor on success states only, neutral on uncertainty/error
 - v2 private repos: GitHub App vs OAuth? *(TBD)*
 
-## 17. Capability Honesty
+## 17. Capability Honesty *(new in Rev 3)*
+
+This is a vibe-coding project. PM (you) + Claude (me). No human dev pair. Some things are within my reliable capability; some need to be phased to v1.5 because the failure mode for non-coder + Claude is "stuck for a weekend on a Docker networking issue" — that's the kind of debug spiral that kills portfolio projects.
 
 **Deferred to v1.5 specifically because of vibe-coding-with-non-coder risk:**
 
-- Iptables-level network allowlist inside Docker
-- TypeScript compiler API for semantic diffing
-- Search-replace block patching with fuzzy matching + retry
+- Iptables-level network allowlist inside Docker (cross-platform Docker networking is genuinely finicky)
+- TypeScript compiler API for semantic diffing (edge cases in re-exports, conditional types, declaration merging)
+- Search-replace block patching with fuzzy matching + retry (LLM whitespace mismatches happen 10–15% of the time and need handling)
 - `api-extractor` integration for JS packages
-- `node_modules` layered caching
+- `node_modules` layered caching (cache invalidation edge cases)
 
 **Solidly in scope for v1.0:**
 
@@ -392,15 +418,62 @@ Every state animated; spring easing (stiffness 280, damping 28); GSAP timelines 
 - PR creation as Drafts
 - All UI, dashboard, mascot, design system
 
-## 18. Phases & Timeline
+The honest tradeoff: v1.0 is less rigorous on the security and confidence dimensions. The mitigation is product framing — every PR explicitly says "medium confidence — manual review required" and opens as Draft. We're not pretending v1.0 is what v1.5 will be.
+
+## 17b. Phase D — Design Iteration (new in Rev 4)
+
+**Trigger:** v1.0 shipped functionally but the UI does not earn the product's positioning. The "Awwwards-tier cyberpunk + CRT" brief was specified in PRD Rev 3 §13 but executed as generic dark-mode SaaS. Three planned screens were not built. The Live Console exists as an empty shell.
+
+**Purpose:** before v1.5 work begins, do a focused design iteration that (a) establishes a documented, opinionated design language in [DESIGN.md](http://design.md/), (b) rebuilds the visual layer of shipped screens, (c) completes S5/S6/S7 as inline states + permalink routes.
+
+**Outputs:**
+
+- [DESIGN.md](http://design.md/) (sibling to PRD/TRD/CLAUDE.md, source of truth for visual/motion/component decisions)
+- Mascot designed in Rive 2D (or R3F low-poly — TBD per [DESIGN.md](http://design.md/) §15 Q2)
+- All 6 routes redesigned and rebuilt per [DESIGN.md](http://design.md/) per-screen briefs
+- Component inventory built per [DESIGN.md](http://design.md/) §12
+
+**Out of scope for Phase D:** any v1.5 detection / confidence-engine work. Semantic API diffing, asymmetric scoring, search-replace blocks, network allowlist tier-2, rejection learning — all wait for v1.5 (post-Phase-D).
+
+**Phase D timeline:** 2–3 weekends.
+
+| Sub-phase | Scope | Effort |
+| --- | --- | --- |
+| D1 — Doc + assets | [DESIGN.md](http://DESIGN.md) finalized (✅ done 2026-05-20). Bones designed in Rive 2D per [DESIGN.md](http://DESIGN.md) §8 (idle + 5 core states minimum). Reference screenshots from .mov refs collected and folded into [DESIGN.md](http://DESIGN.md) §7. **Gate D1:** [DESIGN.md](http://DESIGN.md) reviewed and approved by PM; Rive file with state-machine triggers exported (idle, scanning, thinking, detecting, patching, success poses minimum); .mov-derived motion refs added. | 0.5 weekend (~50% remaining — [DESIGN.md](http://DESIGN.md) done; mascot + refs outstanding) |
+| D2 — S1 + S4 (motion-heavy) | Boot sequence on S1. Live Console rebuild with three-pane layout, stage lanes, 3D dep graph, mascot integration, particle system. **Gate D2:** S1 boot sequence renders end-to-end; S4 runs a full mock scan with all motion firing. | 1 weekend |
+| D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail with Not Analyzed callout, PR confirmation. Inline expansion in S4 + permalink routes. **Gate D3:** full live flow scan→issue→fix→PR works end-to-end with new design; permalink routes render same components statically. | 0.5–1 weekend |
+| D4 — S2/S3/S8/S9 redesign | Rest-mode density pass on PAT modal, New Scan, Dashboard, Settings. **Gate D4:** all 6 routes visually consistent, anti-references list ([DESIGN.md](http://design.md/) §13) checked off, manual walk-through complete. | 0.5 weekend |
+
+**Kill criterion:** if Phase D runs past 4 weekends, ship whatever's done and move to v1.5. Don't perpetually polish.
+
+**Then resume v1.5** as planned in §18.
+
+## 18. Phases & Timeline (revised — hard-first ordering + integration gates, dev review Rev 3)
+
+**Build-order principle:** Front-load the high-risk infrastructure (Docker sandbox, AST parsing, GitHub integration) while energy is highest. LLMs hallucinate Docker commands, miss AST/GitHub edge cases, and need manual verification against real repos. UI polish is psychologically rewarding AND what LLMs do most reliably, so it goes last as the dopamine payoff. If the hard infra hits a wall, we find out by end of weekend 2.
+
+**Gate principle (new):** Every phase ends with a mandatory half-day integration gate (per [CLAUDE.md](http://CLAUDE.md) §7.3). No new phase work starts until the previous gate passes. This catches integration failures before they compound across phases — the single biggest risk for vibe-coded projects.
 
 | Phase | Scope | Effort |
 | --- | --- | --- |
-| 0 — Spec | PRD + TRD + CLAUDE.md (Rev 3) | done |
-| 1A — Project skeleton | Next.js + TS strict + Tailwind + Prisma + design tokens. **Gate 1A**: app boots, env validates, design tokens visible, all checks green | 0.5 weekend |
-| 1B — Hard infra | Two-phase Docker sandbox, AST parser, octokit integration. **Gate 1B**: end-to-end on `colinhacks/zod`, `pmndrs/zustand`, `tanstack/query` | 1.5 weekends |
-| 1C — Agent core | Changelog parser, diagnosis engine, patch generation, REPLAN loop, PR submission as Draft, SSE streaming. **Gate 1C**: full scan on one fixture, Draft PR created | 1 weekend |
-| 1D — UI polish + demo | Live Console, dashboard, mascot animations, GSAP transitions, 3D dep graph, 3 real Draft PRs, Loom | 1 weekend |
-| **v1.0 SHIPS** | | **4 weekends total** |
-| 2A–2E — v1.5 build | Semantic diff, confidence engine, SR-blocks, network allowlist, rejection learning | +3–4 weekends |
-| **v1.5 SHIPS** | | |
+| 0 — Spec | PRD + TRD + [CLAUDE.md](http://CLAUDE.md) (Rev 3) | done |
+| **v1.0 build (hard-first + gates)** |  |  |
+| 1A — Project skeleton | Next.js + TS strict + Tailwind + Prisma + design tokens + `.env.example`. Minimal landing placeholder. **Gate 1A**: app boots, env validates, design tokens visible, all checks green | 0.5 weekend |
+| 1B — Hard infra: Sandbox + AST + GitHub | Two-phase Docker sandbox tested on 2 fixture repos, AST parser tested against 3 real repos, octokit integration with full error-state handling. **Gate 1B (half-day)**: end-to-end integration test of sandbox + AST + GitHub on `colinhacks/zod`, `pmndrs/zustand`, `tanstack/query`. Smoke test for GitHub auth flow added. | 1.5 weekends (incl. gate) |
+| 1C — Agent core | Changelog parser, diagnosis engine, full-file patch generation, REPLAN loop, Prettier post-patch, PR submission as Draft, SSE streaming. **Gate 1C (half-day)**: full scan on one fixture end-to-end; Draft PR actually created on GitHub; REPLAN loop verified. Smoke test for scan flow added. | 1 weekend (incl. gate) |
+| 1D — UI polish + demo | Live Console, dashboard, mascot animations across all 9 states, GSAP page transitions, 3D dep graph, sound, visual regression snapshots committed. **Gate 1D (half-day)**: full click-through audit, all buttons functional, all 9 screens reachable, reduce-motion respected, 3 real Draft PRs opened on real OSS repos, Loom recorded, case study v1.0 written. Smoke test for full user journey added. | 1 weekend (incl. gate) |
+| **v1.0 SHIPS — apply to jobs with this**
+ |  | **4 weekends total** |
+| **Phase D — Design Iteration (post v1.0 ship)** | Redesign shipped screens, build missing S5/S6/S7 as inline states + permalink routes, and publish [DESIGN.md](http://DESIGN.md). (No v1.5 detection/confidence work yet.) | 2–3 weekends |
+| **Phase D SHIPS —**  | **re-record Loom, update case study** |  |
+| **v1.5 build (post v1.0 ship)** |  |  |
+| 2A — Semantic diff signal | TypeScript compiler API + api-extractor fallback + AST-only last resort. **Gate 2A**: semantic diff produces expected output on 3 fixture deps with known breaking changes | 1 weekend |
+| 2B — Confidence engine | Calibrated scoring with asymmetric math + threshold gating. **Gate 2B**: scoring engine tests pass for all rows in TRD §9.5 scoring table | 0.5 weekend |
+| 2C — Patch upgrades | Search-replace blocks for files > 150 lines + fuzzy matching. **Gate 2C**: SR-blocks succeed on 5 fixture patches across small/medium/large files | 1 weekend |
+| 2D — Network allowlist + caching | Iptables tier inside Phase A + node_modules layered cache. **Gate 2D**: iptables blocks non-allowlist hosts; cache hit verified on repeated scan | 0.5–1 weekend |
+| 2E — Rejection learning + v1.5 demo | RejectionPattern + 3 more demo PRs + Loom v1.5 + case study update. **Gate 2E**: full v1.5 smoke + visual regression all green | 0.5 weekend |
+| **v1.5 SHIPS** |  | **+3–4 weekends** |
+
+**Kill criterion:** If v1.0 isn't shipped by end of weekend 5 (one weekend overrun allowed), scope down further (drop test coverage detection entirely, ship dep-upgrade-only) and ship something. Don't keep iterating on a non-shipped product.
+
+**Gate-skip criterion:** Gates are non-negotiable. If a gate fails, fix it before moving on. If a gate is repeatedly failing in the same way (3+ attempts), apply the §12 kill criterion in [CLAUDE.md](http://CLAUDE.md) — surface to owner, propose scope cut.
