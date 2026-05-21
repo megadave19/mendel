@@ -31,3 +31,37 @@ export interface LogLine {
   /** ms since scan start, for the timestamp column. */
   t: number
 }
+
+/** v1.0 confidence is always "medium" (single-signal). v1.5 adds buckets. */
+export type ConfidenceLevel = 'medium'
+
+/** A single diff hunk line for the DiffViewer. */
+export interface DiffLine {
+  kind: 'add' | 'del' | 'ctx' | 'meta'
+  text: string
+}
+
+/**
+ * Issue view model — the shape S5/S6/S7 render. Produced by BOTH the mock driver
+ * (D2/D3 demo) and the real scan (mapped from DB Issue + SSE events in D3 wiring),
+ * so IssueCard/permalink routes don't care about the source.
+ */
+export interface IssueVM {
+  id: string
+  dep: string
+  currentVersion: string
+  latestVersion: string
+  confidence: ConfidenceLevel
+  /** Diagnosis: what / why / evidence. */
+  what: string
+  why: string
+  evidence: { label: string; url: string }[]
+  /** File patch preview. */
+  filePath: string
+  diff: DiffLine[]
+  /** Explicit "Not Analyzed" disclosures (DESIGN.md §11 S6 trust mechanism). */
+  notAnalyzed: string[]
+  verificationPassed: boolean
+  /** Set once a Draft PR is opened (S7). */
+  prUrl?: string
+}

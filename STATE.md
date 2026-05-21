@@ -41,7 +41,7 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 | --- | --- | --- |
 | D1 — Doc + assets | DESIGN.md ✅, MascotWidget placeholder + abstraction boundary ✅, mascot 3D model owner-side (async), ref screenshots pending | 🟢 Code-side complete; mascot art async/non-blocking |
 | D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟢 Built — awaiting PM visual review |
-| D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components per DESIGN.md §12.1 | ⬜ Not started |
+| D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components per DESIGN.md §12.1 | 🟢 UI built (mock data); real-stream + real-issue wiring is the follow-up |
 | D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | ⬜ Not started |
 
 **D1 progress detail:**
@@ -58,7 +58,16 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-**PM visual review of D2** — open in browser (dev server on :3000):
+**D3 follow-up wiring (functional, not visual):**
+1. Reconnect real `useScanStream(id)` into the S4 three-pane layout — map AgentEvent (phase/log/issue/verify/pr/done) → the view model; keep mock only for `id === 'demo'`.
+2. Map DB `Issue` (JSON-stringified fields) → `IssueVM` in GET /api/scans/[id]; permalink routes + S4 playback read real data instead of MOCK_ISSUE.
+3. Then D4 (rest-mode screens: PAT modal, New Scan, Dashboard, Settings) — or hand off for external visual re-skin per PM's plan.
+
+**Deferred (PM plan):** visual polish / Awwwards-bar treatment to be done later with a dedicated design tool. Claude's role: keep structure clean + functional.
+
+---
+
+### (superseded) PM visual review of D2 — open in browser (dev server on :3000):
 - `/` — S1 boot sequence. Watch the power-on → mascot → type-on MENDEL → reveal. Should feel like equipment booting, "this is a thing" within ~4s.
 - `/scan/demo` (any id) — S4 Live Console. Confirm all three panes animate together: mascot pose changes per phase, stage lane advances SCAN→DIAGNOSE→PATCH→VERIFY, log streams with type-on, 3D dep graph rotates + active node pulses. Press F5 to replay.
 - Check `prefers-reduced-motion` (macOS: System Settings → Accessibility → Display → Reduce motion) — S1 should jump straight to interactive.
@@ -86,6 +95,14 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-21 (D3 — S5/S6/S7 inline + permalink, UI built)**
+- **PM called the frontend polish a poor use of time/tokens** and chose to: build structure/functionality now, re-skin visuals later with a tool better suited to design. Pivoted from visual iteration to functional buildout. Components kept well-structured + on-brand-enough for easy re-skinning.
+- **Dual-mode component set built** (DESIGN.md §12.1): `ConfidenceBadge` (amber/medium, v1.0 §5b), `NotAnalyzedCallout` (running pulses / rest static), `DiffViewer` (running stagger / rest static), `IssueCard` (collapsible — absorbs S5 collapsed / S6 expanded / S7 pr-opened in one component). All take `context: 'running' | 'rest'`.
+- **IssueVM view model** added to phase-d/types — the shape S5/S6/S7 render; produced by both mock and (later) real stream so source is irrelevant.
+- **S4 center pane** now streams the inline issue card (S5) → expand for diagnosis+diff+Not-Analyzed (S6) → Open Draft PR → success morph (S7).
+- **Permalink routes** created: `/scan/[id]/issue/[issueId]` (S6) and `/scan/[id]/pr/[prId]` (S7) — reuse the same IssueCard in REST context (DESIGN.md §10 hybrid). 13 routes total, build passes.
+- **Still mock data.** Two follow-ups remain to make D3 fully real: (1) reconnect `useScanStream` into the S4 layout (replace mock for live scans); (2) map DB `Issue` → `IssueVM` in the API + permalink routes (currently render MOCK_ISSUE). Both are contained by the shared IssueVM/Phase/LogLine types.
 
 **2026-05-21 (D2 — S1 redesigned against reference design language)**
 - **First D2 pass was AI-slop** (flat 1px panels, monotone, broken-looking placeholder). PM rejected. Root cause: built from text descriptions of references never actually viewed + didn't use design skills.

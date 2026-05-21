@@ -13,7 +13,7 @@
  * Phase/LogLine shapes in components/phase-d/types, so the swap is contained.
  */
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import { motion } from 'framer-motion'
 import { MascotWidget } from '@/components/MascotWidget'
 import { PanelFrame } from '@/components/phase-d/PanelFrame'
@@ -22,7 +22,8 @@ import { TerminalLog } from '@/components/phase-d/TerminalLog'
 import { DepGraph3D } from '@/components/phase-d/DepGraph3D'
 import { CommandBar } from '@/components/phase-d/CommandBar'
 import { StatusPill } from '@/components/phase-d/StatusPill'
-import { PHASE_TO_POSE } from '@/components/phase-d/types'
+import { IssueCard } from '@/components/phase-d/IssueCard'
+import { PHASE_TO_POSE, type IssueVM } from '@/components/phase-d/types'
 import { useMockScan, MOCK_DEPS } from '@/hooks/use-mock-scan'
 
 const SUBSTATE: Record<string, string> = {
@@ -43,6 +44,17 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   const { id } = use(params)
   const scan = useMockScan(true)
   const pose = PHASE_TO_POSE[scan.phase]
+
+  // Track which issues have had a Draft PR opened (S7 inline morph). Mock: assigns
+  // the real mendel-test PR URL. Real wiring (D3 follow-up) POSTs to submit + uses
+  // the returned URL.
+  const [openedPrs, setOpenedPrs] = useState<Record<string, string>>({})
+  const handleOpenPR = (issue: IssueVM) =>
+    setOpenedPrs((prev) => ({ ...prev, [issue.id]: 'https://github.com/megadave19/mendel-test/pull/2' }))
+
+  const issues: IssueVM[] = scan.issues.map((iss) =>
+    openedPrs[iss.id] ? { ...iss, prUrl: openedPrs[iss.id] } : iss,
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
@@ -98,11 +110,27 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* Center — stage lane + streaming log */}
+        {/* Center — stage lane + issue cards + streaming log */}
         <div style={{ background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '1.25rem 1.25rem 1rem', borderBottom: '1px solid var(--border-subtle)' }}>
             <StageLane phase={scan.phase} />
           </div>
+
+          {/* Issue cards (S5 inline) — stream in as detected; expand for S6/S7 */}
+          {issues.length > 0 && (
+            <div style={{ padding: '1rem 1.25rem 0', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '55%', overflowY: 'auto' }}>
+              {issues.map((iss) => (
+                <IssueCard
+                  key={iss.id}
+                  issue={iss}
+                  context="running"
+                  defaultExpanded={scan.done}
+                  onOpenPR={handleOpenPR}
+                />
+              ))}
+            </div>
+          )}
+
           <div style={{ flex: 1, minHeight: 0, padding: '1rem 1.25rem' }}>
             <TerminalLog lines={scan.lines} live={scan.running} />
           </div>
