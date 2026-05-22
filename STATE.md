@@ -42,7 +42,7 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 | D1 — Doc + assets | DESIGN.md ✅, MascotWidget placeholder + abstraction boundary ✅, mascot 3D model owner-side (async), ref screenshots pending | 🟢 Code-side complete; mascot art async/non-blocking |
 | D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟢 Built — awaiting PM visual review |
 | D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components + REAL data wiring | ✅ UI + real-stream + persistence wired |
-| D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | 🟢 Built — S8 Dashboard, S3 New Scan, S9 Settings, S2 Connect |
+| D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | ✅ Built + non-blocking items closed (3D mascot, dep graph, live SSE, permalinks) |
 
 **D1 progress detail:**
 - ✅ DESIGN.md Rev 1 published (~50% of D1 effort)
@@ -58,20 +58,15 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-**Phase D structural build is complete (D1–D4).** Gate D4 remaining = **PM manual walk-through** of all 6 routes + tick the DESIGN.md §13 anti-reference list. Then Phase D closes and v1.5 can resume (or the external visual re-skin happens first, per PM).
+**Phase D is functionally complete — D1–D4 built + ALL non-blocking items closed** (3D mascot, real dep graph, real permalinks, live SSE fixed & verified). Nothing is being carried into v1.5.
 
-**Gate D4 walk-through checklist (PM):**
-- `/` boot sequence, `/scan/demo` live console (mock), `/dashboard`, `/scan/new`, `/settings`, `/connect`
-- Confirm: no empty-black screens, no H1+subtitle repetition, one mascot per screen, amber constraints panel, dense dashboard.
+**Only remaining to formally close Phase D = PM manual walk-through** of all 6 routes:
+- `/` boot sequence, `/scan/demo` (mock console), a real `/scan/[id]` (live), `/dashboard`, `/scan/new`, `/settings`, `/connect`
+- Confirm: 3D Bones reacts, dep graph real, no empty-black screens, no H1+subtitle repetition, amber constraints panel, dense dashboard.
 
-**Optional follow-ups (not blocking Gate D4):**
-- Permalink pages render MOCK_ISSUE → fetch real IssueVMs from GET /api/scans/[id] by id.
-- Real dep-graph data (§15 Q3) — currently MOCK_DEPS.
-- AppNav sidebar → MascotWidget (currently legacy skull).
-- Verify live SSE → S4 render in-browser.
-- Bones 3D model (owner) → drops into MascotWidget.
+**Then → v1.5** (paused since Phase D start): semantic API diffing, asymmetric/calibrated confidence scoring, search-replace block patching, iptables allowlist tier-2, rejection learning. Re-read CLAUDE.md §5b before any confidence-engine work.
 
-**Deferred (PM plan):** deep visual polish / Awwwards-bar via a dedicated design tool.
+**Deferred by PM choice (not Phase D blockers):** deep Awwwards-bar visual re-skin via a dedicated design tool.
 
 ---
 
@@ -103,6 +98,14 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-22 (Phase D non-blocking items complete — 3D mascot, dep graph, live SSE)**
+- **3D Bones wired** into MascotWidget — owner's Meshy glb optimized 7.52MB→1.4MB; vanilla Three.js (R3F v8 breaks on React 19); fresh material so Bones glows in the phase color; 9 poses procedural (rotation/bob/tilt/jitter/scale + lime/cyan/amber/red). Fixed a THREE.Clock order bug (getElapsedTime before getDelta froze the lerp).
+- **Real dep-graph data** — runner persists package.json dep names (Scan.deps); API returns them; S4 graph renders real nodes (verified: mendel-test → 3 nodes).
+- **Permalinks → real data** (fetch GET /api/scans/[id]).
+- **Live SSE fixed + verified** — emitter map moved to globalThis (Next dev gave routes separate module instances → "Scan not active" mid-scan). Live console now streams real agent reasoning, 3D Bones reacts per phase, stage lane advances, "LIVE" indicator. Confirmed on a live mendel-test scan.
+- **Sidebar mascot: deliberately kept the lightweight SVG skull** (not MascotWidget). Reads better at 28–56px; avoids a persistent WebGL canvas app-wide + double-mascot on S4. 3D Bones is used where it performs (S4 pane, Connect, Dashboard states, dev). The SVG skull functions as the logo mark.
+- **Build-cache gotcha noted:** don't run `pnpm build` while the dev/preview server shares `.next` — it corrupts vendor chunks ("Cannot find module ./vendor-chunks/…"). Clear `.next` + restart if it happens.
 
 **2026-05-22 (D4 — rest-mode screens built; Phase D structural build complete)**
 - **S8 Dashboard:** Nixtio stat row (Issues/Draft PRs/Scans/Time-Saved + sparkline, count-up) replacing the H1+subtitle template; dense scan-history table with status dots from real `/api/scans`. New `StatCard` component.
