@@ -58,14 +58,16 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-D3 real-data wiring is **done** (live stream → S4, issues persisted, API maps to IssueVM). Remaining Phase D work:
+Smoke test ✅ done (real scan completed via GitHub Models, issues persisted + mapped). **Now: D4 — rest-mode redesign** of the 4 remaining screens, per PRD §17b:
+- **S2 PAT modal**, **S3 New Scan**, **S8 Dashboard**, **S9 Settings** — Nixtio-density rest-mode treatment (DESIGN.md §3, §11). Reuse phase-d components (PanelFrame, StatCard, ScanlineOverlay, MascotWidget rest).
+- **Gate D4:** all 6 routes visually consistent, anti-references (DESIGN.md §13) checked off, manual PM walk-through.
 
-1. **End-to-end smoke test of a real scan** through the new S4 (paste a repo at /scan/new → confirm live stream renders in three-pane + issue card enriches on completion + permalinks show real data). Needs a classic PAT with `repo` scope in session.
-2. **D4 — rest-mode screens** (PAT modal, New Scan, Dashboard, Settings) structurally, OR hand off for the external visual re-skin per PM's plan.
-3. **Optional:** permalink pages still render MOCK_ISSUE — switch them to fetch GET /api/scans/[id] and select by issueId/prId for fully real permalinks.
-4. **Optional:** real dep-graph data (§15 Q3) — currently MOCK_DEPS visual.
+Per PM: keep structure clean + functional; deep visual polish may be re-skinned later with a dedicated tool.
 
-**Deferred (PM plan):** visual polish / Awwwards-bar treatment later with a dedicated design tool. Claude's role: keep structure clean + functional.
+**Optional follow-ups (not blocking D4):**
+- Permalink pages still render MOCK_ISSUE — switch to fetch GET /api/scans/[id] by issueId/prId (the API now returns real IssueVMs).
+- Real dep-graph data (§15 Q3) — currently MOCK_DEPS visual.
+- Verify live SSE → S4 render in-browser (curl showed "not active" — likely dev module/timing; worked in browser before).
 
 ---
 
@@ -97,6 +99,13 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-22 (smoke test PASSED — full real scan end-to-end)**
+- Earlier smoke test was blocked by Gemini quota; **re-ran with `LLM_PROVIDER=github-models`** (gpt-4o-mini, free) and it completed end-to-end.
+- Also surfaced + fixed an environment hiccup: Docker Desktop had stopped (scan failed fast at the sandbox-image build); restarted it, re-ran.
+- **Real scan of `megadave19/mendel-test` completed:** 2 issues found + **persisted** (axios 0.24→1.16.1, typescript 5.0→6.0.3). `GET /api/scans/[id]` returns correct `IssueVM`s — real diagnosis/what, evidence links, 7-line diffs, 3 Not-Analyzed items, verificationPassed=true, confidence=medium (§5b ✓). `prsOpened=0` — dedup correctly reused existing PRs #1/#2.
+- **Verified the full chain:** GitHub Models provider → pipeline → issue persistence (the previously-missing `db.issue.create`) → DB→IssueVM mapping → API. Model-id default corrected to `openai/gpt-4o-mini` (models.github.ai requires the publisher prefix).
+- Note: `.env` now has `LLM_PROVIDER=github-models` + a `GITHUB_MODELS_TOKEN` (currently the `gh` CLI token — works, but rotates; for stability create a dedicated PAT with models access). `.env` is gitignored.
 
 **2026-05-22 (LLM resilience + provider abstraction)**
 - **Fixed the retry bug** (provider-agnostic): `classifyError()` distinguishes daily-quota (fail fast — won't reset for hours), transient 503/per-minute-429/network (bounded backoff, max 3, honors retry hint, ≤60s), schema (retry with feedback), fatal (give up). Stops the quota-burning `waiting 15s before retry` loop. 5 tests.

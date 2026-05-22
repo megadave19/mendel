@@ -77,7 +77,8 @@ async function callGitHubModels(prompt: string, maxTokens: number): Promise<stri
   if (!token) throw new Error('GITHUB_MODELS_TOKEN is not set')
 
   const baseUrl = process.env.GITHUB_MODELS_BASE_URL ?? 'https://models.github.ai/inference'
-  const model = process.env.GITHUB_MODELS_MODEL ?? 'gpt-4o-mini'
+  // models.github.ai expects a publisher-prefixed id (e.g. "openai/gpt-4o-mini").
+  const model = process.env.GITHUB_MODELS_MODEL ?? 'openai/gpt-4o-mini'
 
   // OpenAI-compatible chat-completions call via fetch (no SDK dependency).
   const res = await fetch(`${baseUrl}/chat/completions`, {
