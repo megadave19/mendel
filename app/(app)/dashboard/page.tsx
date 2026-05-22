@@ -1,24 +1,36 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+/**
+ * S8 — Dashboard / Scan History (DESIGN.md §11 S8). Rest mode, Nixtio density.
+ *
+ * Header is a stat row (NOT the H1+subtitle template — anti-ref §13): bold
+ * tabular numbers + sparkline. Below: dense scan-history table. Fills the screen
+ * with real data so it never reads as the empty-black anti-pattern.
+ */
+
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Skull } from '@/components/mascot/skull'
+import { StatCard } from '@/components/phase-d/StatCard'
+import { MascotWidget } from '@/components/MascotWidget'
 
 interface ScanRecord {
   id: string
   repoUrl: string
   status: string
-  startedAt: string        // field name from Prisma schema
-  issuesFound?: number     // field name from Prisma schema
+  startedAt: string
+  completedAt?: string | null
+  issuesFound?: number
   prsOpened?: number
-  prUrl?: string
 }
+
+const HOURS_SAVED_PER_PR = 2 // rough estimate — manual migration time avoided
 
 function statusColor(status: string): string {
   switch (status) {
     case 'completed': return 'var(--accent-primary)'
     case 'running': return 'var(--accent-secondary)'
+    case 'failed':
     case 'error': return 'var(--accent-danger)'
     default: return 'var(--text-muted)'
   }
@@ -35,193 +47,106 @@ export default function DashboardPage() {
   useEffect(() => {
     fetch('/api/scans')
       .then((r) => r.json())
-      .then((data: unknown) => {
-        setScans(Array.isArray(data) ? (data as ScanRecord[]) : [])
-      })
+      .then((data: unknown) => setScans(Array.isArray(data) ? (data as ScanRecord[]) : []))
       .catch(() => setScans([]))
       .finally(() => setLoading(false))
   }, [])
 
+  const stats = useMemo(() => {
+    const issues = scans.reduce((s, x) => s + (x.issuesFound ?? 0), 0)
+    const prs = scans.reduce((s, x) => s + (x.prsOpened ?? 0), 0)
+    // Sparkline of issues-per-scan, oldest → newest (list is newest-first).
+    const series = [...scans].reverse().map((x) => x.issuesFound ?? 0)
+    return { scans: scans.length, issues, prs, hours: prs * HOURS_SAVED_PER_PR, series }
+  }, [scans])
+
   return (
-    <div style={{ padding: '2.5rem 2rem', minHeight: '100vh' }}>
-      {/* Header */}
+    <div style={{ padding: '2.25rem 2rem', minHeight: '100vh' }}>
+      {/* ── Stat row (rest-mode header) ── */}
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        style={{ marginBottom: '2.5rem' }}
+        style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
       >
-        <p style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.5625rem',
-          letterSpacing: '0.2em',
-          textTransform: 'uppercase',
-          color: 'var(--accent-primary)',
-          marginBottom: '0.5rem',
-        }}>Mendel</p>
-        <h1 style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '1.875rem',
-          fontWeight: 700,
-          color: 'var(--text-primary)',
-          letterSpacing: '-0.02em',
-          marginBottom: '0.25rem',
-        }}>Scan History</h1>
-        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          All repository scans · Draft PRs only · Confidence: medium
-        </p>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--accent-primary)' }}>
+          Mendel // Dashboard
+        </span>
+        <span style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          {loading ? 'syncing…' : `${stats.scans} scan${stats.scans !== 1 ? 's' : ''} on record`}
+        </span>
       </motion.div>
 
-      {/* Action bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.625rem',
-          letterSpacing: '0.15em',
-          textTransform: 'uppercase',
-          color: 'var(--text-muted)',
-        }}>
-          {loading ? 'Loading…' : `${scans.length} scan${scans.length !== 1 ? 's' : ''}`}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.05 }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: 'var(--border-subtle)', border: '1px solid var(--border-subtle)', marginBottom: '2rem' }}
+      >
+        <StatCard label="Issues Found" value={stats.issues} accent="var(--accent-warning)" series={stats.series} />
+        <StatCard label="Draft PRs Opened" value={stats.prs} accent="var(--accent-primary)" />
+        <StatCard label="Scans Run" value={stats.scans} accent="var(--accent-secondary)" />
+        <StatCard label="Time Saved" value={stats.hours} unit="h" accent="var(--accent-primary)" />
+      </motion.div>
+
+      {/* ── Action bar ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          Scan History
         </span>
         <Link href="/scan/new" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.625rem' }}>
           + New Scan
         </Link>
       </div>
 
-      {/* Table or empty state */}
+      {/* ── Table / states ── */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
-          <Skull state="waiting" size={64} showLabel />
+          <MascotWidget pose="scanning" size={120} />
         </div>
       ) : scans.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '5rem 2rem',
-            border: '1px solid var(--border-subtle)',
-            background: 'var(--bg-1)',
-            textAlign: 'center',
-          }}
-        >
-          <Skull state="idle" size={80} showLabel />
-          <h2 style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '1rem',
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            marginTop: '1.5rem',
-            marginBottom: '0.5rem',
-          }}>No scans yet</h2>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-            Point me at a GitHub repo and I&apos;ll find the stale deps.
-          </p>
-          <Link href="/scan/new" className="btn-primary">
-            Start First Scan →
-          </Link>
-        </motion.div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', border: '1px solid var(--border-subtle)', background: 'var(--bg-1)', textAlign: 'center', gap: '1.25rem' }}>
+          <MascotWidget pose="idle" size={120} />
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>No scans yet. Point Mendel at a repo.</p>
+          <Link href="/scan/new" className="btn-primary">Start First Scan →</Link>
+        </div>
       ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          style={{ border: '1px solid var(--border-subtle)' }}
-        >
-          {/* Table header */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 120px 80px 100px 120px',
-            gap: '1rem',
-            padding: '0.625rem 1.25rem',
-            background: 'var(--bg-2)',
-            borderBottom: '1px solid var(--border-subtle)',
-          }}>
-            {['Repository', 'Date', 'Deps', 'Status', 'PR'].map((h) => (
-              <span key={h} style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.5625rem',
-                letterSpacing: '0.15em',
-                textTransform: 'uppercase',
-                color: 'var(--text-muted)',
-              }}>{h}</span>
+        <div style={{ border: '1px solid var(--border-subtle)' }}>
+          {/* header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.625rem 1.25rem', background: 'var(--bg-2)', borderBottom: '1px solid var(--border-subtle)' }}>
+            {['Repository', 'Date', 'Issues', 'PRs', 'Status'].map((h) => (
+              <span key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{h}</span>
             ))}
           </div>
-
-          {/* Rows */}
           {scans.map((scan, i) => (
             <motion.div
               key={scan.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05, duration: 0.3 }}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 120px 80px 100px 120px',
-                gap: '1rem',
-                padding: '0.875rem 1.25rem',
-                borderBottom: '1px solid var(--border-subtle)',
-                background: 'var(--bg-1)',
-                alignItems: 'center',
-              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: Math.min(i * 0.03, 0.3), duration: 0.25 }}
+              whileHover={{ backgroundColor: 'var(--bg-2)' }}
+              style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.8rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-1)', alignItems: 'center' }}
             >
-              <Link
-                href={`/scan/${scan.id}`}
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8125rem',
-                  color: 'var(--text-primary)',
-                  textDecoration: 'none',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+              <Link href={`/scan/${scan.id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-primary)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {repoName(scan.repoUrl)}
               </Link>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                 {scan.startedAt ? new Date(scan.startedAt).toLocaleDateString() : '—'}
               </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>
-                {scan.issuesFound ?? '—'}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-warning)', fontVariantNumeric: 'tabular-nums' }}>
+                {scan.issuesFound ?? 0}
               </span>
-              <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.5625rem',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: statusColor(scan.status),
-              }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {scan.prsOpened ?? 0}
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: statusColor(scan.status) }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor(scan.status) }} />
                 {scan.status}
               </span>
-              <div>
-                {scan.prUrl ? (
-                  <a
-                    href={scan.prUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.625rem',
-                      color: 'var(--accent-primary)',
-                      textDecoration: 'none',
-                      letterSpacing: '0.08em',
-                    }}
-                  >
-                    View PR →
-                  </a>
-                ) : (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
-                    —
-                  </span>
-                )}
-              </div>
             </motion.div>
           ))}
-        </motion.div>
+        </div>
       )}
     </div>
   )
