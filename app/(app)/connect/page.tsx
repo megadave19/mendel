@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Skull } from '@/components/mascot/skull'
-import type { MascotState } from '@/components/mascot/skull'
+import { MascotWidget, type MascotPose } from '@/components/MascotWidget'
 
 const REQUIRED_SCOPES = [
   { scope: 'repo', desc: 'Read repositories, open PRs' },
@@ -17,12 +16,12 @@ export default function ConnectPage() {
   const [status, setStatus] = useState<'idle' | 'validating' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mascotState: MascotState =
+  const pose: MascotPose =
     status === 'validating' ? 'scanning'
     : status === 'success' ? 'success'
     : status === 'error' ? 'error'
     : pat.length > 0 ? 'thinking'
-    : 'waiting'
+    : 'idle'
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault()
@@ -80,7 +79,7 @@ export default function ConnectPage() {
       >
         {/* Mascot */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
-          <Skull state={mascotState} size={80} showLabel />
+          <MascotWidget pose={pose} size={80} />
         </div>
 
         {/* Header */}

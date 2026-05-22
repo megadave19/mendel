@@ -1,10 +1,16 @@
 'use client'
 
+/**
+ * S3 — New Scan (DESIGN.md §11 S3). Rest mode.
+ * One-input scan starter. Constraints render as a real bordered amber warning
+ * panel (anti-ref §13: not flat text). On submit the button morphs to
+ * INITIALIZING… then navigates to the live console.
+ */
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Skull } from '@/components/mascot/skull'
-import type { MascotState } from '@/components/mascot/skull'
+import { PanelFrame } from '@/components/phase-d/PanelFrame'
 
 function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
   try {
@@ -17,6 +23,13 @@ function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
   }
 }
 
+const CONSTRAINTS = [
+  'Public repositories only',
+  'Single-package repos (no monorepos)',
+  'TypeScript projects preferred',
+  'Max 3 deps patched per scan',
+]
+
 export default function NewScanPage() {
   const router = useRouter()
   const [repoUrl, setRepoUrl] = useState('')
@@ -26,37 +39,23 @@ export default function NewScanPage() {
   const parsed = parseGitHubUrl(repoUrl)
   const isValid = !!parsed
 
-  const mascotState: MascotState =
-    status === 'starting' ? 'scanning'
-    : status === 'error' ? 'error'
-    : isValid ? 'thinking'
-    : 'idle'
-
   async function handleScan(e: React.FormEvent) {
     e.preventDefault()
     if (!parsed) return
-
     setStatus('starting')
     setErrorMsg('')
-
     const pat = sessionStorage.getItem('mendel_pat') ?? ''
-
     try {
       const res = await fetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repoUrl: `https://github.com/${parsed.owner}/${parsed.repo}`,
-          pat,
-        }),
+        body: JSON.stringify({ repoUrl: `https://github.com/${parsed.owner}/${parsed.repo}`, pat }),
       })
-
       if (!res.ok) {
-        const body = await res.json() as { error?: string }
-        throw new Error(body.error ?? `HTTP ${res.status}`)
+        const body = (await res.json()) as { error?: string }
+        throw new Error(typeof body.error === 'string' ? body.error : `HTTP ${res.status}`)
       }
-
-      const { id } = await res.json() as { id: string }
+      const { id } = (await res.json()) as { id: string }
       router.push(`/scan/${id}`)
     } catch (err) {
       setStatus('error')
@@ -64,68 +63,29 @@ export default function NewScanPage() {
     }
   }
 
+  const borderColor = status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'
+
   return (
-    <div style={{
-      flex: 1,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '3rem 2rem',
-    }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem 2rem' }}>
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        style={{ width: '100%', maxWidth: '540px' }}
+        style={{ width: '100%', maxWidth: '560px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
       >
-        {/* Header */}
-        <div style={{ marginBottom: '2.5rem' }}>
-          <p style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.5625rem',
-            letterSpacing: '0.2em',
-            textTransform: 'uppercase',
-            color: 'var(--accent-primary)',
-            marginBottom: '0.5rem',
-          }}>
-            New Scan
+        {/* Header (one mascot per screen — the sidebar carries it) */}
+        <div>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--accent-primary)' }}>
+            Mendel // New Scan
           </p>
-          <h1 style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '2rem',
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            letterSpacing: '-0.02em',
-            marginBottom: '0.5rem',
-          }}>
+          <h1 style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
             Scan a Repository
           </h1>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Paste a public GitHub repo URL. Mendel will detect stale deps,
-            generate patches, and open a Draft PR.
-          </p>
         </div>
 
-        {/* Mascot */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
-          <Skull state={mascotState} size={72} showLabel />
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleScan} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <label style={{
-              display: 'block',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.5625rem',
-              letterSpacing: '0.15em',
-              textTransform: 'uppercase',
-              color: 'var(--text-muted)',
-              marginBottom: '0.5rem',
-            }}>
-              GitHub Repository URL
-            </label>
-            <div style={{ display: 'flex', gap: '0', position: 'relative' }}>
+        <form onSubmit={handleScan} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <PanelFrame title="GitHub Repository URL" accent={isValid ? 'var(--accent-primary)' : 'var(--text-muted)'}>
+            <div style={{ display: 'flex' }}>
               <input
                 type="url"
                 value={repoUrl}
@@ -134,86 +94,41 @@ export default function NewScanPage() {
                 autoFocus
                 spellCheck={false}
                 style={{
-                  flex: 1,
-                  background: 'var(--bg-2)',
-                  borderTop: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
-                  borderBottom: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
-                  borderLeft: `1px solid ${status === 'error' ? 'var(--accent-danger)' : isValid ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
-                  borderRight: 'none',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8125rem',
-                  padding: '0.875rem 1rem',
+                  flex: 1, background: 'var(--bg-3, #222)', color: 'var(--text-primary)',
+                  fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', padding: '0.875rem 1rem',
                   outline: 'none',
-                  transition: 'border-color 0.2s',
+                  borderTop: `1px solid ${borderColor}`, borderBottom: `1px solid ${borderColor}`,
+                  borderLeft: `1px solid ${borderColor}`, borderRight: 'none', transition: 'border-color 0.2s',
                 }}
               />
-              <button
-                type="submit"
-                disabled={!isValid || status === 'starting'}
-                className="btn-primary"
-                style={{ borderRadius: 0, padding: '0.875rem 1.5rem', whiteSpace: 'nowrap' }}
-              >
-                {status === 'starting' ? '...' : 'Scan →'}
+              <button type="submit" disabled={!isValid || status === 'starting'} className="btn-primary" style={{ borderRadius: 0, padding: '0.875rem 1.5rem', whiteSpace: 'nowrap' }}>
+                {status === 'starting' ? 'INITIALIZING…' : 'Scan →'}
               </button>
             </div>
-
-            {/* Parsed preview */}
             {parsed && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                style={{
-                  marginTop: '0.5rem',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.6875rem',
-                  color: 'var(--accent-primary)',
-                }}
-              >
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: '0.625rem', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-primary)' }}>
                 ✓ {parsed.owner} / {parsed.repo}
               </motion.p>
             )}
-
             {errorMsg && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                style={{
-                  marginTop: '0.5rem',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.6875rem',
-                  color: 'var(--accent-danger)',
-                }}
-              >
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: '0.625rem', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-danger)' }}>
                 ✕ {errorMsg}
               </motion.p>
             )}
-          </div>
+          </PanelFrame>
 
-          {/* Constraints */}
-          <div style={{
-            background: 'var(--bg-2)',
-            padding: '1rem',
-            borderLeft: '2px solid var(--border-subtle)',
-          }}>
-            <p style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.5625rem',
-              letterSpacing: '0.15em',
-              textTransform: 'uppercase',
-              color: 'var(--text-muted)',
-              marginBottom: '0.5rem',
-            }}>Constraints (v1.0)</p>
-            {[
-              'Public repositories only',
-              'Single-package repos (no monorepos)',
-              'TypeScript projects preferred',
-              'Max 3 deps patched per scan',
-            ].map((c) => (
-              <p key={c} style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                · {c}
-              </p>
-            ))}
+          {/* Constraints — real bordered amber warning panel */}
+          <div style={{ border: '1px solid var(--accent-warning)', background: 'rgba(255,184,77,0.05)', padding: '1rem 1.1rem' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent-warning)', marginBottom: '0.625rem' }}>
+              ⚠ Constraints · v1.0
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 1rem' }}>
+              {CONSTRAINTS.map((c) => (
+                <p key={c} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.4rem' }}>
+                  <span style={{ color: 'var(--accent-warning)' }}>·</span> {c}
+                </p>
+              ))}
+            </div>
           </div>
         </form>
       </motion.div>
