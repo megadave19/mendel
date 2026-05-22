@@ -1,6 +1,6 @@
 import EventEmitter from 'events'
 import path from 'path'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, rmSync, readFileSync } from 'fs'
 import { cloneRepo, detectMonorepo, getRepoMeta } from '@/lib/github'
 import { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
@@ -89,6 +89,16 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       throw new Error(
         `Monorepo detected (${monorepo.indicators.join(', ')}) — not supported in v1.0`,
       )
+    }
+
+    // Capture the repo's dependency names for the 3D dep graph (real data, §15 Q3).
+    try {
+      const pkgRaw = readFileSync(path.join(repoPath, 'package.json'), 'utf8')
+      const pkg = JSON.parse(pkgRaw) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }
+      const depNames = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})].slice(0, 40)
+      await db.scan.update({ where: { id: scanId }, data: { deps: JSON.stringify(depNames) } })
+    } catch {
+      /* non-fatal — graph falls back to a default node set */
     }
 
     log('Checking dependencies...')

@@ -20,6 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       prsOpened: true,
       totalTokens: true,
       schemaVersion: true,
+      deps: true,
       issues: true,
       // encryptedPat intentionally omitted — never returned to client
     },
@@ -29,7 +30,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Scan not found' }, { status: 404 })
   }
 
+  // Parse the persisted dep-name list (JSON string[]) for the dep graph.
+  let deps: string[] = []
+  try {
+    if (scan.deps) deps = JSON.parse(scan.deps) as string[]
+  } catch {
+    deps = []
+  }
+
   // Map persisted DB issues → frontend IssueVM so the client renders real data.
+  // `deps` below overrides the raw JSON string from `rest`.
   const { issues, ...rest } = scan
-  return NextResponse.json({ ...rest, issues: issues.map(dbIssueToVM) })
+  return NextResponse.json({ ...rest, deps, issues: issues.map(dbIssueToVM) })
 }

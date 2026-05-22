@@ -12,9 +12,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useScanStream } from '@/hooks/use-scan-stream'
-import { useMockScan, type MockScanState } from '@/hooks/use-mock-scan'
+import { useMockScan, MOCK_DEPS, type MockScanState } from '@/hooks/use-mock-scan'
 import type { AgentEvent, AgentPhase } from '@/lib/agent/runner'
 import type { IssueVM, LogLine, Phase } from '@/components/phase-d/types'
+import type { DepNode } from '@/components/phase-d/DepGraph3D'
 
 const DEMO_ID = 'demo'
 
@@ -53,6 +54,7 @@ function useRealScanView(id: string): MockScanState {
   // id === '' makes useScanStream no-op (disabled in demo mode).
   const { entries, done } = useScanStream(id)
   const [enriched, setEnriched] = useState<IssueVM[] | null>(null)
+  const [deps, setDeps] = useState<DepNode[]>([])
 
   // Derive the view model from the streamed entries.
   const derived = useMemo(() => {
@@ -105,8 +107,12 @@ function useRealScanView(id: string): MockScanState {
     let cancelled = false
     fetch(`/api/scans/${id}`)
       .then((r) => r.json())
-      .then((data: { issues?: IssueVM[] }) => {
-        if (!cancelled && Array.isArray(data.issues) && data.issues.length > 0) setEnriched(data.issues)
+      .then((data: { issues?: IssueVM[]; deps?: string[] }) => {
+        if (cancelled) return
+        if (Array.isArray(data.issues) && data.issues.length > 0) setEnriched(data.issues)
+        if (Array.isArray(data.deps) && data.deps.length > 0) {
+          setDeps(data.deps.map((name) => ({ id: name, label: name })))
+        }
       })
       .catch(() => {})
     return () => {
@@ -150,6 +156,7 @@ function useRealScanView(id: string): MockScanState {
     depsScanned: issues.length,
     issuesFound: issues.length,
     issues,
+    deps: deps.length > 0 ? deps : MOCK_DEPS,
     running: !done,
     done,
     replay: () => window.location.reload(),

@@ -24,7 +24,6 @@ import { CommandBar } from '@/components/phase-d/CommandBar'
 import { StatusPill } from '@/components/phase-d/StatusPill'
 import { IssueCard } from '@/components/phase-d/IssueCard'
 import { PHASE_TO_POSE, type IssueVM } from '@/components/phase-d/types'
-import { MOCK_DEPS } from '@/hooks/use-mock-scan'
 import { useScanView } from '@/hooks/use-scan-view'
 
 const SUBSTATE: Record<string, string> = {
@@ -47,6 +46,7 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   const scan = useScanView(id)
   const isDemo = id === 'demo'
   const pose = PHASE_TO_POSE[scan.phase]
+  const depNodes = scan.deps
 
   // Track which issues have had a Draft PR opened (S7 inline morph). Mock: assigns
   // the real mendel-test PR URL. Real wiring (D3 follow-up) POSTs to submit + uses
@@ -142,8 +142,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
 
         {/* Right — 3D dep graph */}
         <div style={{ background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <PanelFrame title="Dependency Graph" meta={`${MOCK_DEPS.length} nodes`} accent="var(--accent-secondary)" flush style={{ flex: 1, border: 'none', background: 'transparent' }}>
-            <DepGraph3D nodes={MOCK_DEPS} activeNodeId={scan.activeNodeId} context="running" />
+          <PanelFrame title="Dependency Graph" meta={`${depNodes.length} nodes`} accent="var(--accent-secondary)" flush style={{ flex: 1, border: 'none', background: 'transparent' }}>
+            <DepGraph3D nodes={depNodes} activeNodeId={scan.activeNodeId} context="running" />
           </PanelFrame>
         </div>
       </div>

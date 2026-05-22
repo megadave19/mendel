@@ -97,6 +97,8 @@ export interface MockScanState {
   depsScanned: number
   issuesFound: number
   issues: IssueVM[]
+  /** Dependency nodes for the 3D graph. */
+  deps: DepNode[]
   running: boolean
   done: boolean
   replay: () => void
@@ -173,5 +175,5 @@ export function useMockScan(autoStart = true): MockScanState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, running, done, replay }
+  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay }
 }
