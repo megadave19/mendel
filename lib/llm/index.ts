@@ -13,6 +13,35 @@ function stripFences(text: string): string {
     .trim()
 }
 
+// Cap on transient (503 / per-minute-429) retries. Far lower than before — a
+// rate-limit error that doesn't clear in a couple of short waits won't clear by
+// hammering it, so we stop rather than burn more quota.
+const MAX_TRANSIENT_RETRIES = 3
+const MAX_TRANSIENT_WAIT_MS = 60_000
+
+type ErrorClass = 'daily-quota' | 'transient' | 'schema' | 'fatal'
+
+/**
+ * Classify a provider error so we retry only what can actually recover:
+ *  - daily-quota → fail FAST (won't reset for hours; retrying wastes more quota)
+ *  - transient   → 503 / per-minute 429 / network — short bounded backoff
+ *  - schema      → bad JSON / failed validation — retry with corrective feedback
+ *  - fatal       → anything else (auth, bad request) — give up
+ */
+export function classifyError(msg: string): ErrorClass {
+  const m = msg.toLowerCase()
+  // Daily free-tier exhaustion: RESOURCE_EXHAUSTED on a per-day metric.
+  if (/per ?day|requestsperday|free_tier.*day|quota.*exceeded|resource_exhausted/.test(m) && !/retry in \d/.test(m)) {
+    return 'daily-quota'
+  }
+  if (m.includes('429') || m.includes('rate limit') || m.includes('quota')) return 'transient'
+  if (m.includes('503') || m.includes('high demand') || m.includes('overload') || m.includes('fetch') || m.includes('network')) {
+    return 'transient'
+  }
+  if (m.includes('json') || m.includes('schema') || m.includes('parse') || /expected .+received/.test(m)) return 'schema'
+  return 'fatal'
+}
+
 export async function llmComplete<T>(
   prompt: string,
   schema: z.ZodSchema<T>,
@@ -28,36 +57,60 @@ export async function llmComplete<T>(
     generationConfig: { maxOutputTokens: opts?.maxTokens ?? 8192 },
   })
 
-  const maxRetries = opts?.retries ?? 3
+  const maxSchemaRetries = opts?.retries ?? 3
+  let schemaAttempt = 0
+  let transientRetries = 0
   let lastError: Error = new Error('Unknown error')
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  while (schemaAttempt < maxSchemaRetries) {
     const retryNote =
-      attempt > 0
+      schemaAttempt > 0
         ? `\n\nIMPORTANT: Your previous response failed JSON schema validation with: ${lastError.message}. Return valid JSON only.`
         : ''
 
     try {
       const result = await model.generateContent(prompt + retryNote)
       const raw = stripFences(result.response.text())
-      const parsed = schema.parse(JSON.parse(raw))
-      return parsed
+      return schema.parse(JSON.parse(raw))
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
-      const msg = lastError.message
+      const cls = classifyError(lastError.message)
 
-      // Rate limit (429) or overload (503): wait then retry without burning a schema-retry attempt
-      if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('503') || msg.includes('high demand')) {
-        const match = msg.match(/retry in (\d+(?:\.\d+)?)s/)
-        const waitMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 2000 : 15_000
-        console.log(`[llm] Transient error — waiting ${Math.round(waitMs / 1000)}s before retry...`)
+      if (cls === 'daily-quota') {
+        // Fail fast — no point looping for minutes on an hours-long reset.
+        throw new Error(
+          'Gemini daily free-tier quota exhausted. Wait for the daily reset, enable billing on the API key, or switch the LLM provider. ' +
+            `(${lastError.message})`,
+        )
+      }
+
+      if (cls === 'transient') {
+        if (transientRetries >= MAX_TRANSIENT_RETRIES) {
+          throw new Error(
+            `LLM rate-limited / unavailable after ${MAX_TRANSIENT_RETRIES} retries. ${lastError.message}`,
+          )
+        }
+        // Honor a short server-provided hint, else exponential backoff, both capped.
+        const hint = lastError.message.match(/retry in (\d+(?:\.\d+)?)s/)
+        const backoff = hint
+          ? Math.ceil(parseFloat(hint[1]) * 1000) + 1000
+          : Math.min(5_000 * 2 ** transientRetries, MAX_TRANSIENT_WAIT_MS)
+        const waitMs = Math.min(backoff, MAX_TRANSIENT_WAIT_MS)
+        transientRetries++
+        console.log(`[llm] Transient error (${transientRetries}/${MAX_TRANSIENT_RETRIES}) — waiting ${Math.round(waitMs / 1000)}s...`)
         await new Promise((r) => setTimeout(r, waitMs))
-        attempt-- // don't count transient errors against schema retries
-        if (attempt < -8) break // safety: max 8 transient retries
+        continue // don't count against schema retries
+      }
+
+      if (cls === 'schema') {
+        schemaAttempt++ // retry with corrective feedback
         continue
       }
+
+      // fatal — auth, malformed request, etc.
+      throw new Error(`LLM call failed: ${lastError.message}`)
     }
   }
 
-  throw new Error(`LLM failed after ${maxRetries} attempts: ${lastError.message}`)
+  throw new Error(`LLM failed schema validation after ${maxSchemaRetries} attempts: ${lastError.message}`)
 }
