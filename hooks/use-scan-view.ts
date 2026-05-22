@@ -114,14 +114,42 @@ function useRealScanView(id: string): MockScanState {
     }
   }, [done, id])
 
+  const issues = enriched ?? derived.issues
+
+  // Playback: the scan finished before this page opened, so the live stream had
+  // nothing to replay (it returned a synthetic "Scan not active"). Detect that —
+  // done + no issues came through the live feed — and render the persisted result
+  // as static playback instead of the dead-live-feed noise (DESIGN.md §10).
+  const isPlayback = done && derived.issues.length === 0
+
+  let lines = derived.lines
+  if (isPlayback) {
+    lines = [
+      {
+        id: 'pb-head',
+        stage: 'DONE' as Phase,
+        text: issues.length > 0
+          ? `Playback — scan complete. ${issues.length} issue(s) found.`
+          : 'Playback — scan complete. No saved issue detail.',
+        t: 0,
+      },
+      ...issues.map((iss, i) => ({
+        id: `pb-${i}`,
+        stage: 'DONE' as Phase,
+        text: `${iss.dep} ${iss.currentVersion} → ${iss.latestVersion}${iss.prUrl ? ' · Draft PR opened' : ''}`,
+        t: 0,
+      })),
+    ]
+  }
+
   return {
-    phase: derived.phase,
-    lines: derived.lines,
-    activeNodeId: derived.activeNodeId,
+    phase: isPlayback ? 'DONE' : derived.phase,
+    lines,
+    activeNodeId: isPlayback ? null : derived.activeNodeId,
     elapsedMs: derived.elapsedMs,
-    depsScanned: derived.issues.length,
-    issuesFound: derived.issues.length,
-    issues: enriched ?? derived.issues,
+    depsScanned: issues.length,
+    issuesFound: issues.length,
+    issues,
     running: !done,
     done,
     replay: () => window.location.reload(),
