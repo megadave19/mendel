@@ -1,5 +1,26 @@
-import { describe, it, expect } from 'vitest'
-import { classifyError } from '@/lib/llm'
+import { describe, it, expect, afterEach } from 'vitest'
+import { classifyError, getProvider } from '@/lib/llm'
+
+describe('getProvider', () => {
+  afterEach(() => {
+    delete process.env.LLM_PROVIDER
+  })
+
+  it('defaults to gemini (existing behavior/quality unchanged)', () => {
+    delete process.env.LLM_PROVIDER
+    expect(getProvider()).toBe('gemini')
+  })
+
+  it('selects github-models only when explicitly set', () => {
+    process.env.LLM_PROVIDER = 'github-models'
+    expect(getProvider()).toBe('github-models')
+  })
+
+  it('falls back to gemini for any unrecognized value', () => {
+    process.env.LLM_PROVIDER = 'something-else'
+    expect(getProvider()).toBe('gemini')
+  })
+})
 
 /**
  * Locks the retry-classification fix: a daily-quota 429 must FAIL FAST (not loop

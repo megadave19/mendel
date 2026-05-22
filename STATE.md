@@ -98,6 +98,13 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-22 (LLM resilience + provider abstraction)**
+- **Fixed the retry bug** (provider-agnostic): `classifyError()` distinguishes daily-quota (fail fast — won't reset for hours), transient 503/per-minute-429/network (bounded backoff, max 3, honors retry hint, ≤60s), schema (retry with feedback), fatal (give up). Stops the quota-burning `waiting 15s before retry` loop. 5 tests.
+- **LLM provider abstraction** — `lib/llm/index.ts` now dispatches by `LLM_PROVIDER` env: `gemini` (default — behavior/quality unchanged) or `github-models` (free, OpenAI-compatible via fetch, no SDK dep). Shared retry/schema loop wraps both. Env documented in `.env.example` (GITHUB_MODELS_TOKEN/MODEL/BASE_URL). 3 tests lock default=gemini.
+- **Quality note:** abstraction is pure plumbing — zero quality/perf impact at default (Gemini). GitHub Models (GPT-4o-mini/4o) is comparable quality; its tradeoff is free-tier rate/token caps, not output quality.
+- **Prompt caching: evaluated, NOT added.** It cuts token cost/latency, not request count — does nothing for the RPM/RPD rate-limit wall, and doesn't change functionality. Not worth the Gemini context-cache overhead at this volume.
+- 39/39 tests, typecheck + lint clean.
+
 **2026-05-21 (D3 — real data wiring complete)**
 - **Discovered the runner never persisted Issue rows** — only updated scan counts. So GET /api/scans/[id] always returned empty issues; no issue detail was stored anywhere. Fixed.
 - **`lib/agent/issue-vm.ts`** — single source for (a) `persistIssueData()` building the DB blobs and (b) `dbIssueToVM()` parsing them back (Zod-validated). Enforces §5b: confidence always "medium", Not-Analyzed disclosures always present. Diff preview = manifest version bump + per-file explanations (full-file rewrites don't yield a cheap line diff).
