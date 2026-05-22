@@ -2,32 +2,42 @@
 
 /**
  * S7 permalink — PR Confirmation as a standalone route (DESIGN.md §10 hybrid).
- * Reuses IssueCard in REST context with the PR already opened (shows the S7
- * success state). Useful for case-study links.
- *
- * D3 (now): mock issue + mock PR URL. D3 follow-up: fetch the real scan/issue and
- * its prUrl from GET /api/scans/[id].
+ * Fetches the persisted scan and renders the matching issue (with its opened PR)
+ * via IssueCard in REST context — useful for case-study links.
  */
 
-import { use } from 'react'
+import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { IssueCard } from '@/components/phase-d/IssueCard'
-import { MOCK_ISSUE } from '@/hooks/use-mock-scan'
+import type { IssueVM } from '@/components/phase-d/types'
 
 export default function PrPermalinkPage({
   params,
 }: {
   params: Promise<{ id: string; prId: string }>
 }) {
-  const { id } = use(params)
-  const issueWithPr = { ...MOCK_ISSUE, prUrl: 'https://github.com/megadave19/mendel-test/pull/2' }
+  const { id, prId } = use(params)
+  const [issue, setIssue] = useState<IssueVM | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/scans/${id}`)
+      .then((r) => r.json())
+      .then((data: { issues?: IssueVM[] }) => {
+        if (cancelled) return
+        // Match by issue id, else the first issue that actually opened a PR.
+        const found = data.issues?.find((i) => i.id === prId) ?? data.issues?.find((i) => i.prUrl) ?? null
+        setIssue(found)
+        setState(found ? 'ready' : 'missing')
+      })
+      .catch(() => !cancelled && setState('missing'))
+    return () => { cancelled = true }
+  }, [id, prId])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-0)', padding: '2.5rem 2rem', maxWidth: '820px', margin: '0 auto' }}>
-      <Link
-        href={`/scan/${id}`}
-        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)', textDecoration: 'none' }}
-      >
+      <Link href={`/scan/${id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)', textDecoration: 'none' }}>
         ← Back to scan
       </Link>
 
@@ -38,7 +48,9 @@ export default function PrPermalinkPage({
         Scan {id.slice(0, 12)} · Permalink
       </p>
 
-      <IssueCard issue={issueWithPr} context="rest" defaultExpanded />
+      {state === 'loading' && <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Loading…<span className="terminal-cursor" /></p>}
+      {state === 'missing' && <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>No PR on record for this scan.</p>}
+      {state === 'ready' && issue && <IssueCard issue={issue} context="rest" defaultExpanded />}
     </div>
   )
 }
