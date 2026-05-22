@@ -42,7 +42,7 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 | D1 — Doc + assets | DESIGN.md ✅, MascotWidget placeholder + abstraction boundary ✅, mascot 3D model owner-side (async), ref screenshots pending | 🟢 Code-side complete; mascot art async/non-blocking |
 | D2 — S1 + S4 (motion-heavy) | Boot sequence + Live Console rebuild | 🟢 Built — awaiting PM visual review |
 | D3 — S5/S6/S7 inline + permalink | Issue cards, fix detail, PR confirm — dual-mode components + REAL data wiring | ✅ UI + real-stream + persistence wired |
-| D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | ⬜ Not started |
+| D4 — S2/S3/S8/S9 redesign | Rest-mode density pass | 🟢 Built — S8 Dashboard, S3 New Scan, S9 Settings, S2 Connect |
 
 **D1 progress detail:**
 - ✅ DESIGN.md Rev 1 published (~50% of D1 effort)
@@ -58,16 +58,20 @@ v1.0 shipped functionally on 2026-05-20 — agent works end-to-end, real Draft P
 
 ## Next Task (immediate)
 
-Smoke test ✅ done (real scan completed via GitHub Models, issues persisted + mapped). **Now: D4 — rest-mode redesign** of the 4 remaining screens, per PRD §17b:
-- **S2 PAT modal**, **S3 New Scan**, **S8 Dashboard**, **S9 Settings** — Nixtio-density rest-mode treatment (DESIGN.md §3, §11). Reuse phase-d components (PanelFrame, StatCard, ScanlineOverlay, MascotWidget rest).
-- **Gate D4:** all 6 routes visually consistent, anti-references (DESIGN.md §13) checked off, manual PM walk-through.
+**Phase D structural build is complete (D1–D4).** Gate D4 remaining = **PM manual walk-through** of all 6 routes + tick the DESIGN.md §13 anti-reference list. Then Phase D closes and v1.5 can resume (or the external visual re-skin happens first, per PM).
 
-Per PM: keep structure clean + functional; deep visual polish may be re-skinned later with a dedicated tool.
+**Gate D4 walk-through checklist (PM):**
+- `/` boot sequence, `/scan/demo` live console (mock), `/dashboard`, `/scan/new`, `/settings`, `/connect`
+- Confirm: no empty-black screens, no H1+subtitle repetition, one mascot per screen, amber constraints panel, dense dashboard.
 
-**Optional follow-ups (not blocking D4):**
-- Permalink pages still render MOCK_ISSUE — switch to fetch GET /api/scans/[id] by issueId/prId (the API now returns real IssueVMs).
-- Real dep-graph data (§15 Q3) — currently MOCK_DEPS visual.
-- Verify live SSE → S4 render in-browser (curl showed "not active" — likely dev module/timing; worked in browser before).
+**Optional follow-ups (not blocking Gate D4):**
+- Permalink pages render MOCK_ISSUE → fetch real IssueVMs from GET /api/scans/[id] by id.
+- Real dep-graph data (§15 Q3) — currently MOCK_DEPS.
+- AppNav sidebar → MascotWidget (currently legacy skull).
+- Verify live SSE → S4 render in-browser.
+- Bones 3D model (owner) → drops into MascotWidget.
+
+**Deferred (PM plan):** deep visual polish / Awwwards-bar via a dedicated design tool.
 
 ---
 
@@ -99,6 +103,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-22 (D4 — rest-mode screens built; Phase D structural build complete)**
+- **S8 Dashboard:** Nixtio stat row (Issues/Draft PRs/Scans/Time-Saved + sparkline, count-up) replacing the H1+subtitle template; dense scan-history table with status dots from real `/api/scans`. New `StatCard` component.
+- **S3 New Scan:** PanelFrame'd input + constraints as a real bordered amber warning panel (anti-ref §13 fixed); button morphs INITIALIZING…
+- **S9 Settings:** bordered panels — PAT (status pill, save/revoke, session-only), Preferences toggles (reduce-motion, mascot, sound[v1.5-disabled]), About.
+- **S2 Connect:** legacy Skull → MascotWidget.
+- **Anti-ref fix:** removed per-page header mascots from New Scan + Settings — the sidebar (AppNav) is the single per-screen mascot.
+- Verified Dashboard / New Scan / Settings via Claude Preview (looked correct, dense, on-brand). build 10/10 routes, typecheck + lint clean, 39/39 tests.
+- **Known/optional (not blocking):** (a) AppNav sidebar still uses legacy skull.tsx, not MascotWidget — fine until 3D model lands (the SVG skull looks better than the placeholder box). (b) /connect sits in the (app) group so it shows the sidebar — slightly odd for a pre-connect screen; layout tweak deferred. (c) permalink pages still render MOCK_ISSUE; (d) dep graph uses MOCK_DEPS. (e) deep visual polish deferred to PM's external re-skin.
 
 **2026-05-22 (smoke test PASSED — full real scan end-to-end)**
 - Earlier smoke test was blocked by Gemini quota; **re-ran with `LLM_PROVIDER=github-models`** (gpt-4o-mini, free) and it completed end-to-end.
