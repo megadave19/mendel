@@ -20,7 +20,14 @@ import { persistIssueData } from './issue-vm'
 
 // ─── Event bus ───────────────────────────────────────────────────────────────
 
-const scanEmitters = new Map<string, EventEmitter>()
+// Shared via globalThis so the POST route (runScan) and the SSE stream route
+// (getScanEmitter) hit the SAME map. Next dev gives routes separate module
+// instances, so a plain module-level Map isn't shared → the stream can't find a
+// running scan's emitter and reports "Scan not active". globalThis fixes both
+// dev and prod (same pattern as the Prisma client singleton).
+const globalForEmitters = globalThis as unknown as { __mendelScanEmitters?: Map<string, EventEmitter> }
+const scanEmitters: Map<string, EventEmitter> =
+  globalForEmitters.__mendelScanEmitters ?? (globalForEmitters.__mendelScanEmitters = new Map())
 
 export function getScanEmitter(scanId: string): EventEmitter | undefined {
   return scanEmitters.get(scanId)
