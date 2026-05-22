@@ -58,3 +58,7 @@ playwright-report/
 # Python bytecode cache (from skill scripts)
 __pycache__/
 *.pyc
+
+# 3D model source (only the optimized public/mascot/bones.glb is committed)
+Meshy_AI_Neon_Bearded_Skeleton_biped/
+bones-model.zip
