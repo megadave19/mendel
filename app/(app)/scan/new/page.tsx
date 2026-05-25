@@ -7,10 +7,12 @@
  * INITIALIZING… then navigates to the live console.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { PanelFrame } from '@/components/phase-d/PanelFrame'
+import { useToast } from '@/components/shared/toast'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
   try {
@@ -31,10 +33,22 @@ const CONSTRAINTS = [
 ]
 
 export default function NewScanPage() {
+  useDocumentTitle('New Scan')
   const router = useRouter()
+  const toast = useToast()
   const [repoUrl, setRepoUrl] = useState('')
   const [status, setStatus] = useState<'idle' | 'starting' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+
+  // Fix #3 (audit-2): gate this screen — no PAT in session → bounce to /connect
+  // with a return-to. Was failing silently with `pat=""` on POST.
+  useEffect(() => {
+    if (!sessionStorage.getItem('mendel_pat')) {
+      toast.info('Connect a GitHub PAT first.')
+      router.replace('/connect?return=/scan/new')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const parsed = parseGitHubUrl(repoUrl)
   const isValid = !!parsed

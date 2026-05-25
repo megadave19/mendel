@@ -29,12 +29,34 @@ const execAsync = promisify(exec)
 // instances, so a plain module-level Map isn't shared → the stream can't find a
 // running scan's emitter and reports "Scan not active". globalThis fixes both
 // dev and prod (same pattern as the Prisma client singleton).
-const globalForEmitters = globalThis as unknown as { __mendelScanEmitters?: Map<string, EventEmitter> }
+const globalForEmitters = globalThis as unknown as {
+  __mendelScanEmitters?: Map<string, EventEmitter>
+  __mendelCancelled?: Set<string>
+}
 const scanEmitters: Map<string, EventEmitter> =
   globalForEmitters.__mendelScanEmitters ?? (globalForEmitters.__mendelScanEmitters = new Map())
+// Fix #4: in-process cancel registry — cancel endpoint adds the scanId; the
+// runner checks between phases and throws "Scan cancelled" (caught by outer
+// catch → status='cancelled'). Soft cancel: any in-flight Docker container
+// keeps running for that phase, but no further phase advances.
+const cancelledScans: Set<string> =
+  globalForEmitters.__mendelCancelled ?? (globalForEmitters.__mendelCancelled = new Set())
 
 export function getScanEmitter(scanId: string): EventEmitter | undefined {
   return scanEmitters.get(scanId)
+}
+
+export function requestCancel(scanId: string): boolean {
+  if (!scanEmitters.has(scanId)) return false
+  cancelledScans.add(scanId)
+  return true
+}
+
+function throwIfCancelled(scanId: string): void {
+  if (cancelledScans.has(scanId)) {
+    cancelledScans.delete(scanId)
+    throw new Error('Scan cancelled by user')
+  }
 }
 
 // ─── Event types ─────────────────────────────────────────────────────────────
@@ -143,6 +165,7 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
     const tokenEstimate = { used: 0 }
 
     for (const dep of staleDeps.slice(0, MAX_DEPS)) {
+      throwIfCancelled(scanId)
       if (tokenEstimate.used > TOKEN_CAP) {
         log(`Token cap reached (${TOKEN_CAP}) — stopping`)
         break
@@ -305,14 +328,20 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log(`Fatal: ${message}`)
+    const isCancel = message.includes('Scan cancelled')
+    log(isCancel ? message : `Fatal: ${message}`)
     emit({ type: 'error', message })
-    // Fix #2: persist the failure reason so post-hoc debugging works (was SSE-only).
+    // Fix #2 (audit-1): persist the failure reason; Fix #4: distinguish cancel.
     await db.scan.update({
       where: { id: scanId },
-      data: { status: 'failed', errorMessage: message.slice(0, 1000), completedAt: new Date() },
+      data: {
+        status: isCancel ? 'cancelled' : 'failed',
+        errorMessage: message.slice(0, 1000),
+        completedAt: new Date(),
+      },
     }).catch(() => {})
   } finally {
+    cancelledScans.delete(scanId)
     try {
       rmSync(repoPath, { recursive: true, force: true })
     } catch {

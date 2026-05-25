@@ -1,17 +1,31 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { MascotWidget, type MascotPose } from '@/components/MascotWidget'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 const REQUIRED_SCOPES = [
   { scope: 'repo', desc: 'Read repositories, open PRs' },
   { scope: 'read:user', desc: 'Identify authenticated user' },
 ]
 
+// Suspense wrapper — useSearchParams in the child requires it for static prerender.
 export default function ConnectPage() {
+  return (
+    <Suspense fallback={null}>
+      <ConnectForm />
+    </Suspense>
+  )
+}
+
+function ConnectForm() {
+  useDocumentTitle('Connect GitHub')
   const router = useRouter()
+  const params = useSearchParams()
+  // Fix #3 (audit-2): honor ?return= so we deep-link back to /scan/new etc.
+  const returnTo = params.get('return') ?? '/dashboard'
   const [pat, setPat] = useState('')
   const [status, setStatus] = useState<'idle' | 'validating' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -41,7 +55,7 @@ export default function ConnectPage() {
       if (data.valid) {
         sessionStorage.setItem('mendel_pat', pat.trim())
         setStatus('success')
-        setTimeout(() => router.push('/dashboard'), 800)
+        setTimeout(() => router.push(returnTo), 800)
       } else {
         setStatus('error')
         setErrorMsg(data.error ?? 'PAT rejected by GitHub.')

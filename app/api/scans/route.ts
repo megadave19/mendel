@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
       completedAt: true,
       issuesFound: true,
       prsOpened: true,
+      errorMessage: true,
       // encryptedPat intentionally omitted — never returned to client
     },
   })

@@ -25,9 +25,11 @@ interface IssueCardProps {
   /** Called when "Open Draft PR" is clicked. Parent performs submit + sets prUrl. */
   onOpenPR?: (issue: IssueVM) => void
   onReject?: (issue: IssueVM) => void
+  /** Fix #15: when provided, render a "share" link to the issue's permalink. */
+  scanId?: string
 }
 
-export function IssueCard({ issue, context = 'rest', defaultExpanded = false, onOpenPR, onReject }: IssueCardProps) {
+export function IssueCard({ issue, context = 'rest', defaultExpanded = false, onOpenPR, onReject, scanId }: IssueCardProps) {
   const running = context === 'running'
   const [expanded, setExpanded] = useState(defaultExpanded)
   const opened = !!issue.prUrl
@@ -89,6 +91,22 @@ export function IssueCard({ issue, context = 'rest', defaultExpanded = false, on
           )}
         </span>
       </button>
+
+      {/* Fix #15 (audit-2): permalink share — surfaced only when scanId provided. */}
+      {scanId && (
+        <a
+          href={opened ? `/scan/${scanId}/pr/${issue.id}` : `/scan/${scanId}/issue/${issue.id}`}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Open this issue in a standalone permalink view"
+          style={{
+            position: 'absolute', top: 8, right: 110,
+            fontFamily: 'var(--font-mono)', fontSize: '0.5rem', letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: 'var(--text-muted)', textDecoration: 'none',
+          }}
+        >
+          ↗ share
+        </a>
+      )}
 
       {/* ── Expanded detail (S6) + PR-opened (S7) ── */}
       <AnimatePresence initial={false}>

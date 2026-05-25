@@ -13,6 +13,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { StatCard } from '@/components/phase-d/StatCard'
 import { MascotWidget } from '@/components/MascotWidget'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 interface ScanRecord {
   id: string
@@ -22,14 +23,15 @@ interface ScanRecord {
   completedAt?: string | null
   issuesFound?: number
   prsOpened?: number
+  /** Fix #5 (audit-2): surfaced from the API for failed scans. */
+  errorMessage?: string | null
 }
-
-const HOURS_SAVED_PER_PR = 2 // rough estimate — manual migration time avoided
 
 function statusColor(status: string): string {
   switch (status) {
     case 'completed': return 'var(--accent-primary)'
     case 'running': return 'var(--accent-secondary)'
+    case 'cancelled': return 'var(--accent-warning)'
     case 'failed':
     case 'error': return 'var(--accent-danger)'
     default: return 'var(--text-muted)'
@@ -41,6 +43,7 @@ function repoName(url: string): string {
 }
 
 export default function DashboardPage() {
+  useDocumentTitle('Dashboard')
   const [scans, setScans] = useState<ScanRecord[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -55,9 +58,10 @@ export default function DashboardPage() {
   const stats = useMemo(() => {
     const issues = scans.reduce((s, x) => s + (x.issuesFound ?? 0), 0)
     const prs = scans.reduce((s, x) => s + (x.prsOpened ?? 0), 0)
+    const failed = scans.filter((x) => x.status === 'failed' || x.status === 'cancelled').length
     // Sparkline of issues-per-scan, oldest → newest (list is newest-first).
     const series = [...scans].reverse().map((x) => x.issuesFound ?? 0)
-    return { scans: scans.length, issues, prs, hours: prs * HOURS_SAVED_PER_PR, series }
+    return { scans: scans.length, issues, prs, failed, series }
   }, [scans])
 
   return (
@@ -84,10 +88,11 @@ export default function DashboardPage() {
         transition={{ duration: 0.5, delay: 0.05 }}
         style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: 'var(--border-subtle)', border: '1px solid var(--border-subtle)', marginBottom: '2rem' }}
       >
+        {/* Fix #6 (audit-2): replaced fabricated "Time Saved" with a real stat (failed/cancelled). */}
         <StatCard label="Issues Found" value={stats.issues} accent="var(--accent-warning)" series={stats.series} />
         <StatCard label="Draft PRs Opened" value={stats.prs} accent="var(--accent-primary)" />
         <StatCard label="Scans Run" value={stats.scans} accent="var(--accent-secondary)" />
-        <StatCard label="Time Saved" value={stats.hours} unit="h" accent="var(--accent-primary)" />
+        <StatCard label="Failed / Cancelled" value={stats.failed} accent="var(--accent-danger)" />
       </motion.div>
 
       {/* ── Action bar ── */}
@@ -119,33 +124,45 @@ export default function DashboardPage() {
               <span key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{h}</span>
             ))}
           </div>
-          {scans.map((scan, i) => (
-            <motion.div
-              key={scan.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: Math.min(i * 0.03, 0.3), duration: 0.25 }}
-              whileHover={{ backgroundColor: 'var(--bg-2)' }}
-              style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.8rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-1)', alignItems: 'center' }}
-            >
-              <Link href={`/scan/${scan.id}`} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-primary)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {repoName(scan.repoUrl)}
-              </Link>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                {scan.startedAt ? new Date(scan.startedAt).toLocaleDateString() : '—'}
-              </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-warning)', fontVariantNumeric: 'tabular-nums' }}>
-                {scan.issuesFound ?? 0}
-              </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {scan.prsOpened ?? 0}
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: statusColor(scan.status) }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor(scan.status) }} />
-                {scan.status}
-              </span>
-            </motion.div>
-          ))}
+          {scans.map((scan, i) => {
+            const failed = scan.status === 'failed' || scan.status === 'cancelled'
+            return (
+              <motion.div
+                key={scan.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: Math.min(i * 0.03, 0.3), duration: 0.25 }}
+                whileHover={{ backgroundColor: 'var(--bg-2)' }}
+                /* Fix #5 (audit-2): show errorMessage on hover for failed/cancelled. */
+                title={failed && scan.errorMessage ? scan.errorMessage : undefined}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.8rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-1)', alignItems: 'center' }}
+              >
+                <Link
+                  href={`/scan/${scan.id}`}
+                  aria-label={`Open scan for ${repoName(scan.repoUrl)}`}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-primary)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  {repoName(scan.repoUrl)}
+                  {failed && scan.errorMessage && (
+                    <span aria-hidden style={{ fontSize: '0.5625rem', color: 'var(--accent-danger)' }}>ⓘ</span>
+                  )}
+                </Link>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                  {scan.startedAt ? new Date(scan.startedAt).toLocaleDateString() : '—'}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-warning)', fontVariantNumeric: 'tabular-nums' }}>
+                  {scan.issuesFound ?? 0}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {scan.prsOpened ?? 0}
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: statusColor(scan.status) }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor(scan.status) }} />
+                  {scan.status}
+                </span>
+              </motion.div>
+            )
+          })}
         </div>
       )}
     </div>

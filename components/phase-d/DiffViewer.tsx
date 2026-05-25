@@ -55,6 +55,7 @@ export function DiffViewer({ filePath, diff, context = 'rest' }: DiffViewerProps
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{filePath}</span>
         <button
           onClick={copy}
+          aria-label={copied ? 'Diff copied to clipboard' : 'Copy diff to clipboard'}
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: '0.5625rem',

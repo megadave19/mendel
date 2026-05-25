@@ -19,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <CRTOverlay />
       {!isPreAuth && <AppNav />}
       <main
+        id="main"
         style={{
           flex: 1,
           marginLeft: isPreAuth ? 0 : '220px',
