@@ -58,16 +58,25 @@ export function IssueCard({ issue, context = 'rest', defaultExpanded = false, on
       )}
 
       {/* ── Summary row (S5) ── */}
-      <button
+      {/* Container is a div (not button) so the share <a> inside is valid HTML.
+          Keyboard support: Enter / Space toggles. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
         style={{
           width: '100%',
           display: 'flex',
           alignItems: 'center',
           gap: '0.875rem',
           padding: '0.875rem 1rem',
-          background: 'transparent',
-          border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
         }}
@@ -81,7 +90,22 @@ export function IssueCard({ issue, context = 'rest', defaultExpanded = false, on
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>
           {issue.currentVersion} <span style={{ color: 'var(--text-muted)' }}>→</span> {issue.latestVersion}
         </span>
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.625rem', flexShrink: 0 }}>
+          {/* Fix #15 (audit-2 fix-2): share link lives INSIDE the header row, before
+              the badge, so it never overlaps PR-Opened / Confidence-Medium. */}
+          {scanId && (
+            <a
+              href={opened ? `/scan/${scanId}/pr/${issue.id}` : `/scan/${scanId}/issue/${issue.id}`}
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Open this issue in a standalone permalink view"
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.5rem', letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: 'var(--text-muted)', textDecoration: 'none',
+              }}
+            >
+              ↗ share
+            </a>
+          )}
           {opened ? (
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--accent-primary)', border: '1px solid var(--accent-primary)', padding: '0.15rem 0.45rem' }}>
               PR Opened
@@ -90,23 +114,7 @@ export function IssueCard({ issue, context = 'rest', defaultExpanded = false, on
             <ConfidenceBadge level={issue.confidence} size="sm" />
           )}
         </span>
-      </button>
-
-      {/* Fix #15 (audit-2): permalink share — surfaced only when scanId provided. */}
-      {scanId && (
-        <a
-          href={opened ? `/scan/${scanId}/pr/${issue.id}` : `/scan/${scanId}/issue/${issue.id}`}
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Open this issue in a standalone permalink view"
-          style={{
-            position: 'absolute', top: 8, right: 110,
-            fontFamily: 'var(--font-mono)', fontSize: '0.5rem', letterSpacing: '0.12em',
-            textTransform: 'uppercase', color: 'var(--text-muted)', textDecoration: 'none',
-          }}
-        >
-          ↗ share
-        </a>
-      )}
+      </div>
 
       {/* ── Expanded detail (S6) + PR-opened (S7) ── */}
       <AnimatePresence initial={false}>

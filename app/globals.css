@@ -351,12 +351,18 @@ code, pre, kbd, samp {
 /* S4 three-pane → vertical stack below desktop */
 .scan-grid {
   display: grid;
-  grid-template-columns: 240px 1fr 360px;
+  grid-template-columns: 240px minmax(0, 1fr) 360px;
   gap: 1px;
   background: var(--border-strong);
   min-height: 0;
   flex: 1;
 }
+/* Critical: min-width 0 on each grid item so an expanded issue card with long
+   text doesn't blow the center column wider than 1fr and push the dep graph
+   off-screen (audit-3 fix). The center pane gets overflow-y on its content. */
+.scan-grid > * { min-width: 0; }
+.scan-grid > *:nth-child(2) { overflow: hidden; }
+
 @media (max-width: 1023px) {
   .scan-grid {
     grid-template-columns: 1fr;
