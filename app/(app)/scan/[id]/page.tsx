@@ -144,8 +144,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
         </span>
       </div>
 
-      {/* ── Three panes ── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '240px 1fr 360px', gap: '1px', background: 'var(--border-strong)', minHeight: 0 }}>
+      {/* ── Three panes ── (responsive: stacks vertically below 1024px) */}
+      <div className="scan-grid">
         {/* Left — mascot + state + stats */}
         <div style={{ background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', padding: '1.25rem', gap: '1.25rem', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'center' }}>

@@ -313,30 +313,83 @@ code, pre, kbd, samp {
   color: #6e6e6e;
 }
 
-/* ── Desktop-only notice (Fix #1 audit-2 — explicit "not for mobile") ────── */
+/* ── Responsive layout (Fix #1 audit-2 v2 — real responsive, not a notice) ─ */
+/* Breakpoints: desktop ≥1024 (default), tablet 640–1023, narrow <640. The
+   classes below are applied to layout containers; styles inline on most
+   elements are left alone — only the structural containers respond. */
 
-.desktop-only-notice {
-  display: none;
+/* AppNav sidebar → top bar below desktop */
+.app-shell { flex-direction: row; }
+.nav-sidebar { position: fixed; top: 0; left: 0; width: 220px; min-height: 100vh; }
+.nav-sidebar-mascot { display: flex; }
+.app-main { margin-left: 220px; }
+
+@media (max-width: 1023px) {
+  .app-shell { flex-direction: column; }
+  .nav-sidebar {
+    position: sticky;
+    width: 100%;
+    min-height: auto;
+    height: 56px;
+    flex-direction: row !important;
+    align-items: center;
+    padding: 0 1rem !important;
+    gap: 1rem;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-subtle);
+    z-index: 50;
+  }
+  /* Hide the sidebar's logo padding wrapper extras; show inline */
+  .nav-sidebar > div { padding: 0 !important; }
+  .nav-sidebar-items { display: flex; flex-direction: row !important; gap: 0.5rem; padding: 0 !important; }
+  .nav-sidebar-items > p { display: none; }     /* "NAVIGATION" label hidden */
+  .nav-sidebar-mascot { display: none; }        /* sidebar mascot hidden in topbar mode */
+  .nav-sidebar-badge { display: none; }         /* confidence pill hidden in topbar */
+  .app-main { margin-left: 0; }
+}
+
+/* S4 three-pane → vertical stack below desktop */
+.scan-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr 360px;
+  gap: 1px;
+  background: var(--border-strong);
+  min-height: 0;
+  flex: 1;
 }
 @media (max-width: 1023px) {
-  body > main,
-  body > div[style] {
-    /* hint to user the app isn't laid out for narrow viewports */
+  .scan-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 320px;
   }
-  .desktop-only-notice {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 100001;
+  /* the left mascot pane becomes a compact strip */
+  .scan-grid > div:first-child {
+    flex-direction: row !important;
     align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    background: rgba(10, 10, 10, 0.94);
-    backdrop-filter: blur(6px);
-    font-family: var(--font-mono);
-    color: var(--text-primary);
-    text-align: center;
+    gap: 1rem !important;
+    padding: 0.75rem 1rem !important;
   }
+}
+
+/* Dashboard stat row + table */
+.dashboard-stats { display: grid; grid-template-columns: repeat(4, 1fr); }
+.dashboard-row, .dashboard-thead { grid-template-columns: 1fr 120px 70px 70px 110px; }
+@media (max-width: 1023px) {
+  .dashboard-stats { grid-template-columns: repeat(2, 1fr); }
+  .dashboard-row, .dashboard-thead { grid-template-columns: 1fr 90px 110px; }
+  /* hide Date + PRs cols on narrow */
+  .dashboard-row > :nth-child(2),
+  .dashboard-thead > :nth-child(2),
+  .dashboard-row > :nth-child(4),
+  .dashboard-thead > :nth-child(4) { display: none; }
+}
+@media (max-width: 640px) {
+  .dashboard-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* S1 hero — keep corner HUDs out of the way at narrow widths */
+@media (max-width: 1023px) {
+  .s1-hud { font-size: 0.5625rem !important; }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── */

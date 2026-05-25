@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { JetBrains_Mono } from 'next/font/google'
 import { ToastProvider } from '@/components/shared/toast'
-import { DesktopOnlyNotice } from '@/components/shared/desktop-only-notice'
 import './globals.css'
 
 const jetbrainsMono = JetBrains_Mono({
@@ -39,7 +38,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {/* Fix #11 (audit-2) — skip-to-content for keyboard users. */}
         <a href="#main" className="skip-to-content">Skip to content</a>
-        <DesktopOnlyNotice />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

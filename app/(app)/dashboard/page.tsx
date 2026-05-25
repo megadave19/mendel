@@ -86,7 +86,8 @@ export default function DashboardPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.05 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: 'var(--border-subtle)', border: '1px solid var(--border-subtle)', marginBottom: '2rem' }}
+        className="dashboard-stats"
+        style={{ gap: '1px', background: 'var(--border-subtle)', border: '1px solid var(--border-subtle)', marginBottom: '2rem' }}
       >
         {/* Fix #6 (audit-2): replaced fabricated "Time Saved" with a real stat (failed/cancelled). */}
         <StatCard label="Issues Found" value={stats.issues} accent="var(--accent-warning)" series={stats.series} />
@@ -119,7 +120,7 @@ export default function DashboardPage() {
       ) : (
         <div style={{ border: '1px solid var(--border-subtle)' }}>
           {/* header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.625rem 1.25rem', background: 'var(--bg-2)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="dashboard-thead" style={{ display: 'grid', gap: '1rem', padding: '0.625rem 1.25rem', background: 'var(--bg-2)', borderBottom: '1px solid var(--border-subtle)' }}>
             {['Repository', 'Date', 'Issues', 'PRs', 'Status'].map((h) => (
               <span key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{h}</span>
             ))}
@@ -135,7 +136,8 @@ export default function DashboardPage() {
                 whileHover={{ backgroundColor: 'var(--bg-2)' }}
                 /* Fix #5 (audit-2): show errorMessage on hover for failed/cancelled. */
                 title={failed && scan.errorMessage ? scan.errorMessage : undefined}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 120px 70px 70px 110px', gap: '1rem', padding: '0.8rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-1)', alignItems: 'center' }}
+                className="dashboard-row"
+                style={{ display: 'grid', gap: '1rem', padding: '0.8rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-1)', alignItems: 'center' }}
               >
                 <Link
                   href={`/scan/${scan.id}`}

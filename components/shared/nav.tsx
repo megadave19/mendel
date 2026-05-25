@@ -20,19 +20,18 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
   const pathname = usePathname()
 
   return (
-    <nav style={{
-      width: '220px',
-      minHeight: '100vh',
-      background: 'var(--bg-1)',
-      borderRight: '1px solid var(--border-subtle)',
-      display: 'flex',
-      flexDirection: 'column',
-      padding: '1.5rem 0',
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      zIndex: 50,
-    }}>
+    <nav
+      aria-label="Primary navigation"
+      className="nav-sidebar"
+      style={{
+        background: 'var(--bg-1)',
+        borderRight: '1px solid var(--border-subtle)',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '1.5rem 0',
+        zIndex: 50,
+      }}
+    >
       {/* Logo */}
       <div style={{ padding: '0 1.25rem 2rem' }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none' }}>
@@ -50,7 +49,7 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
       </div>
 
       {/* Nav items */}
-      <div style={{ flex: 1, padding: '0 0.75rem' }}>
+      <div className="nav-sidebar-items" style={{ flex: 1, padding: '0 0.75rem' }}>
         <p style={{
           fontFamily: 'var(--font-mono)',
           fontSize: '0.5625rem',
@@ -109,11 +108,10 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
         })}
       </div>
 
-      {/* Mascot in sidebar */}
-      <div style={{
+      {/* Mascot in sidebar — hidden in top-bar mode (<1024px) */}
+      <div className="nav-sidebar-mascot" style={{
         padding: '1.5rem 1.25rem',
         borderTop: '1px solid var(--border-subtle)',
-        display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: '0.75rem',
@@ -121,8 +119,8 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
         <Skull state={mascotState} size={56} showLabel />
       </div>
 
-      {/* Confidence badge */}
-      <div style={{ padding: '0.75rem 1rem 0.5rem' }}>
+      {/* Confidence badge — hidden in top-bar mode */}
+      <div className="nav-sidebar-badge" style={{ padding: '0.75rem 1rem 0.5rem' }}>
         <span className="confidence-badge" style={{ fontSize: '0.5rem', width: '100%', justifyContent: 'center' }}>
           All PRs → Drafts
         </span>

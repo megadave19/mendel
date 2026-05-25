@@ -15,14 +15,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isPreAuth = pathname === '/connect'
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-0)' }}>
+    <div className="app-shell" style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-0)' }}>
       <CRTOverlay />
       {!isPreAuth && <AppNav />}
       <main
         id="main"
+        className={isPreAuth ? undefined : 'app-main'}
         style={{
           flex: 1,
-          marginLeft: isPreAuth ? 0 : '220px',
           minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
