@@ -21,6 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       totalTokens: true,
       schemaVersion: true,
       deps: true,
+      errorMessage: true,
       issues: true,
       // encryptedPat intentionally omitted — never returned to client
     },

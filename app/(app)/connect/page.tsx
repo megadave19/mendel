@@ -36,23 +36,23 @@ export default function ConnectPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pat: pat.trim() }),
       })
-      const data = await res.json() as { valid: boolean; error?: string }
+      const data = (await res.json()) as { valid: boolean; error?: string }
 
       if (data.valid) {
-        // Store PAT in sessionStorage for this session
-        // In production this would be encrypted server-side per CLAUDE.md §5
         sessionStorage.setItem('mendel_pat', pat.trim())
         setStatus('success')
         setTimeout(() => router.push('/dashboard'), 800)
       } else {
         setStatus('error')
-        setErrorMsg(data.error ?? 'PAT validation failed — check scopes and try again.')
+        setErrorMsg(data.error ?? 'PAT rejected by GitHub.')
       }
-    } catch {
-      // API not wired yet — accept any non-empty PAT for now
-      sessionStorage.setItem('mendel_pat', pat.trim())
-      setStatus('success')
-      setTimeout(() => router.push('/dashboard'), 800)
+    } catch (err) {
+      // Fix #1: do NOT fall through to "accept anything" on network error —
+      // that was the false-trust bug. Surface the failure and block submit.
+      setStatus('error')
+      setErrorMsg(
+        `Could not reach validation endpoint: ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
   }
 

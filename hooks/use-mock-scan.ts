@@ -175,5 +175,18 @@ export function useMockScan(autoStart = true): MockScanState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Fix #12: pause the elapsed-time ticker (50ms setInterval) when the tab is
+  // hidden — it was waking the page continuously off-screen for no benefit.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden && ticker.current) {
+        clearInterval(ticker.current)
+        ticker.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
   return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay }
 }

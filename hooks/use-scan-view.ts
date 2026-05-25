@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { notFound } from 'next/navigation'
 import { useScanStream } from '@/hooks/use-scan-stream'
 import { useMockScan, MOCK_DEPS, type MockScanState } from '@/hooks/use-mock-scan'
 import type { AgentEvent, AgentPhase } from '@/lib/agent/runner'
@@ -106,7 +107,11 @@ function useRealScanView(id: string): MockScanState {
     if (!done) return
     let cancelled = false
     fetch(`/api/scans/${id}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        // Fix #8: trigger the styled not-found page for bogus IDs.
+        if (r.status === 404) notFound()
+        return r.json()
+      })
       .then((data: { issues?: IssueVM[]; deps?: string[] }) => {
         if (cancelled) return
         if (Array.isArray(data.issues) && data.issues.length > 0) setEnriched(data.issues)

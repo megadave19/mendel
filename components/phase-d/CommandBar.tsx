@@ -49,11 +49,14 @@ export function CommandBar({ keys, status }: CommandBarProps) {
         letterSpacing: '0.1em',
       }}
     >
-      {keys.map((k) => (
+      {keys.map((k) => {
+        const inert = k.disabled || !k.onPress
+        return (
         <button
           key={k.key}
           onClick={k.onPress}
-          disabled={k.disabled || !k.onPress}
+          disabled={inert}
+          title={inert ? 'Demo control — not wired in v1.0' : undefined}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -61,8 +64,9 @@ export function CommandBar({ keys, status }: CommandBarProps) {
             background: 'transparent',
             border: 'none',
             padding: 0,
-            cursor: k.onPress && !k.disabled ? 'pointer' : 'default',
-            opacity: k.disabled ? 0.35 : 1,
+            cursor: inert ? 'not-allowed' : 'pointer',
+            // Fix #5: inert F-keys are visibly faded so they don't read as live controls.
+            opacity: inert ? 0.35 : 1,
             fontFamily: 'inherit',
             fontSize: 'inherit',
             letterSpacing: 'inherit',
@@ -80,7 +84,8 @@ export function CommandBar({ keys, status }: CommandBarProps) {
           </span>
           <span style={{ color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{k.label}</span>
         </button>
-      ))}
+        )
+      })}
       {status && (
         <span
           style={{

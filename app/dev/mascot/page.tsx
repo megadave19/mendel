@@ -5,7 +5,7 @@
  *
  * CLAUDE.md §6b workflow step 5: build components in isolation at /dev/[component]
  * before integrating. This route lets the PM cycle every pose and confirm the
- * Rive wiring (state machine + pose input) works once bones.riv lands.
+ * 3D Bones model + per-pose procedural reactions (glow color, motion) work end-to-end.
  *
  * Dev-only surface. Not linked from the app nav; not part of the 7 Phase D routes.
  */
@@ -57,7 +57,7 @@ export default function DevMascotPage() {
           BONES
         </h1>
         <p style={{ fontSize: '0.75rem', color: '#9A9A9A', marginTop: '0.5rem' }}>
-          Operator of the Mendel machine · Rive 2D · reactions only
+          Operator of the Mendel machine · 3D model · reactions only
         </p>
       </div>
 
@@ -129,10 +129,9 @@ export default function DevMascotPage() {
           lineHeight: 1.6,
         }}
       >
-        Placeholder mode. The 3D mascot model (owner-supplied) wires in behind this same{' '}
-        <span style={{ color: '#FFB84D' }}>pose</span> interface — no screen consuming{' '}
-        <span style={{ color: '#FFB84D' }}>&lt;MascotWidget&gt;</span> will need changes when
-        it lands.
+        3D model loaded from <span style={{ color: '#FFB84D' }}>/mascot/bones.glb</span>. Each pose
+        drives a different <span style={{ color: '#FFB84D' }}>emissive color</span> + motion (rotation,
+        bob, tilt, jitter). Falls back to an on-brand placeholder if the model can&apos;t load.
       </p>
     </div>
   )

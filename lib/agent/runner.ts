@@ -17,6 +17,10 @@ import {
 import { detectPackageManager } from '@/lib/sandbox/detect'
 import { db } from '@/lib/db'
 import { persistIssueData } from './issue-vm'
+import { buildReferenceIndex, findPackageUsageSites } from './signals/ast-parser'
+import { promisify } from 'util'
+import { exec } from 'child_process'
+const execAsync = promisify(exec)
 
 // ─── Event bus ───────────────────────────────────────────────────────────────
 
@@ -123,6 +127,14 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
 
     log(`Found ${staleDeps.length} stale dep(s): ${staleDeps.map((d) => d.name).join(', ')}`)
 
+    // Fix #9: pre-check Docker so a missing daemon throws an actionable error
+    // instead of failing cryptically deep inside ensureSandboxImage().
+    try {
+      await execAsync('docker info', { timeout: 5_000 })
+    } catch {
+      throw new Error('Docker Desktop is not running. Start Docker and re-run the scan.')
+    }
+
     log('Preparing sandbox image...')
     await ensureSandboxImage()
 
@@ -162,8 +174,29 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
 
       // ── PATCH ───────────────────────────────────────────────────────────────
       emit({ type: 'phase', phase: 'PATCH' })
+
+      // Fix #4: trust real usage sites over LLM file-picking. The LLM only
+      // sees ~20 source files in its context and routinely misses where the
+      // dep is actually imported (the Antarang case shipped a version-bump-
+      // only PR for exactly this reason). Augment with AST findings.
+      let filesToModify: string[] = ['package.json']
+      try {
+        const refIndex = buildReferenceIndex(repoPath)
+        const usageFiles = [...new Set(findPackageUsageSites(refIndex, dep.name).map((u) => u.filePath))]
+        if (usageFiles.length > 0) {
+          log(`AST: ${usageFiles.length} file(s) actually import ${dep.name} — patching the real usage sites`)
+        }
+        const merged = new Set<string>(filesToModify)
+        for (const f of usageFiles) if (merged.size < 3) merged.add(f)
+        for (const f of diagnosis.filesToModify) if (merged.size < 3) merged.add(f)
+        filesToModify = [...merged]
+      } catch (astErr) {
+        log(`AST scan failed (${String(astErr).slice(0, 120)}) — falling back to LLM-suggested files`)
+        filesToModify = [...new Set(['package.json', ...diagnosis.filesToModify])].slice(0, 3)
+      }
+
       const patches = []
-      for (const filePath of diagnosis.filesToModify.slice(0, 3)) {
+      for (const filePath of filesToModify) {
         const patch = await patchFile(repoPath, filePath, dep, breakingChanges, diagnosis, log)
         if (patch) patches.push(patch)
         tokenEstimate.used += 8_000
@@ -214,30 +247,39 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       }
 
       // ── SUBMIT ──────────────────────────────────────────────────────────────
+      // Fix #3: do NOT open a PR if Phase A install failed — the patch is
+      // entirely unverified (install couldn't even run), so shipping a Draft
+      // here is the dangerous case (it's how PR #17 on Antarang-Portfolio
+      // landed as a bare version bump). Phase B (typecheck) failures still
+      // open as draft-with-warning per the v1.0 §5b "medium confidence" intent.
       emit({ type: 'phase', phase: 'SUBMIT' })
       let prUrl: string | undefined
-      try {
-        const result = await submitDraftPR(
-          repoPath,
-          owner,
-          repo,
-          meta.defaultBranch,
-          dep,
-          breakingChanges,
-          diagnosis,
-          patches,
-          verificationPassed,
-          pat,
-          log,
-        )
+      if (!phaseA.success) {
+        log('⚠ Skipping PR submission — install failed, patch could not be verified at all')
+      } else {
+        try {
+          const result = await submitDraftPR(
+            repoPath,
+            owner,
+            repo,
+            meta.defaultBranch,
+            dep,
+            breakingChanges,
+            diagnosis,
+            patches,
+            verificationPassed,
+            pat,
+            log,
+          )
 
-        prUrl = result.prUrl
-        if (!result.skipped) {
-          prsOpened++
-          emit({ type: 'pr', url: result.prUrl, branch: result.branchName })
+          prUrl = result.prUrl
+          if (!result.skipped) {
+            prsOpened++
+            emit({ type: 'pr', url: result.prUrl, branch: result.branchName })
+          }
+        } catch (submitErr) {
+          log(`PR submission failed: ${String(submitErr)}`)
         }
-      } catch (submitErr) {
-        log(`PR submission failed: ${String(submitErr)}`)
       }
 
       // ── PERSIST ─────────────────────────────────────────────────────────────
@@ -265,7 +307,11 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
     const message = err instanceof Error ? err.message : String(err)
     log(`Fatal: ${message}`)
     emit({ type: 'error', message })
-    await db.scan.update({ where: { id: scanId }, data: { status: 'failed' } }).catch(() => {})
+    // Fix #2: persist the failure reason so post-hoc debugging works (was SSE-only).
+    await db.scan.update({
+      where: { id: scanId },
+      data: { status: 'failed', errorMessage: message.slice(0, 1000), completedAt: new Date() },
+    }).catch(() => {})
   } finally {
     try {
       rmSync(repoPath, { recursive: true, force: true })

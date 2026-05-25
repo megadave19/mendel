@@ -14,13 +14,24 @@
  */
 
 import { use, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
-import { MascotWidget } from '@/components/MascotWidget'
 import { PanelFrame } from '@/components/phase-d/PanelFrame'
 import { StageLane } from '@/components/phase-d/StageLane'
 import { TerminalLog } from '@/components/phase-d/TerminalLog'
-import { DepGraph3D } from '@/components/phase-d/DepGraph3D'
 import { CommandBar } from '@/components/phase-d/CommandBar'
+
+// Fix #10: lazy-load the heavy WebGL components so the S4 chrome paints
+// without waiting on Three.js (~150KB) + the 3D glb. Both are client-only,
+// so SSR is disabled — no impact since the rest of S4 is interactive anyway.
+const MascotWidget = dynamic(
+  () => import('@/components/MascotWidget').then((m) => m.MascotWidget),
+  { ssr: false, loading: () => <div style={{ width: 150, height: 150 }} /> },
+)
+const DepGraph3D = dynamic(
+  () => import('@/components/phase-d/DepGraph3D').then((m) => m.DepGraph3D),
+  { ssr: false, loading: () => <div style={{ width: '100%', height: '100%' }} /> },
+)
 import { StatusPill } from '@/components/phase-d/StatusPill'
 import { IssueCard } from '@/components/phase-d/IssueCard'
 import { PHASE_TO_POSE, type IssueVM } from '@/components/phase-d/types'
@@ -77,14 +88,16 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
           SCAN · {id.slice(0, 12)}
         </span>
         <StatusPill phase={scan.phase} active />
+        {/* Fix #6: connection indicator uses distinct labels (LIVE / PLAYBACK / IDLE)
+            so it doesn't duplicate the phase pill (which already says DONE on completion). */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
           <motion.span
-            style={{ width: 6, height: 6, borderRadius: '50%', background: scan.done ? 'var(--accent-primary)' : 'var(--accent-secondary)' }}
+            style={{ width: 6, height: 6, borderRadius: '50%', background: scan.running ? 'var(--accent-secondary)' : 'var(--text-muted)' }}
             animate={scan.running ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
             transition={scan.running ? { duration: 1, repeat: Infinity } : undefined}
           />
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            {scan.running ? 'live' : scan.done ? 'done' : 'idle'}
+            {scan.running ? 'live' : scan.done ? 'playback' : 'idle'}
           </span>
         </div>
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
