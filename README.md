@@ -273,7 +273,7 @@ Active work, known limitations, and future features are tracked in
 
 ## A note on scope
 
-Mendel is a portfolio / demonstration project built to explore **autonomous,
+At moment Mendel is a demonstration project built to explore **autonomous,
 verifiable, honestly-calibrated AI agents** — not a production SaaS. It runs on a
 single machine, targets public single-package repositories, and opens every PR as
 a **Draft** for human review. The interesting engineering is in the verification
