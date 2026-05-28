@@ -8,6 +8,13 @@ export interface SandboxConfig {
   phaseBTimeoutMs?: number
   /** Use --frozen-lockfile (true) or --no-frozen-lockfile (false, default for post-patch verify) */
   frozenLockfile?: boolean
+  /**
+   * v1.5 W#8 — Iptables allowlist for Phase A. When omitted, the default
+   * tier-1 list is used by buildAllowlist(). When supplied, this is the
+   * already-built {hosts} array from `buildAllowlist({tier2: ...})`. Empty
+   * array → leave bridge network open (v1.0 back-compat).
+   */
+  allowlistHosts?: string[]
 }
 
 export interface SandboxPhaseResult {

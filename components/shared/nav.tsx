@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Skull } from '@/components/mascot/skull'
-import type { MascotState } from '@/components/mascot/skull'
+import { BonesMascot } from '@/components/BonesMascot'
+import { useMascotPhase } from '@/components/mascot-phase-context'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '◈' },
@@ -12,12 +12,20 @@ const NAV_ITEMS = [
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
-interface NavProps {
-  mascotState?: MascotState
-}
-
-export function AppNav({ mascotState = 'idle' }: NavProps) {
+/**
+ * AppNav — sidebar shell. Hosts the single Bones mascot for the whole app
+ * (DESIGN.md §8: one mascot, present along the journey). The mascot reacts
+ * to the current scan phase via MascotPhaseContext; pages call setPhase()
+ * from an effect.
+ *
+ * Previous incarnation rendered TWO instances of an old 2D Skull component
+ * (28px in the logo row + 56px in the sidebar slot) AND let other screens
+ * render their own standalone 3D MascotWidget — three mascot identities on
+ * one screen at worst. Removed.
+ */
+export function AppNav() {
   const pathname = usePathname()
+  const { phase } = useMascotPhase()
 
   return (
     <nav
@@ -32,15 +40,15 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
         zIndex: 50,
       }}
     >
-      {/* Logo */}
+      {/* Wordmark (no mascot here — the mascot lives in the sidebar slot below). */}
       <div style={{ padding: '0 1.25rem 2rem' }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none' }}>
-          <Skull state="idle" size={28} />
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <span aria-hidden style={{ width: 6, height: 6, background: 'var(--accent-primary)', boxShadow: 'var(--glow-primary)' }} />
           <span style={{
             fontFamily: 'var(--font-mono)',
             fontWeight: 700,
             fontSize: '0.875rem',
-            letterSpacing: '0.1em',
+            letterSpacing: '0.18em',
             color: 'var(--accent-primary)',
           }}>
             MENDEL
@@ -108,15 +116,24 @@ export function AppNav({ mascotState = 'idle' }: NavProps) {
         })}
       </div>
 
-      {/* Mascot in sidebar — hidden in top-bar mode (<1024px) */}
+      {/* Sole mascot for the entire app — reacts to the current phase. */}
       <div className="nav-sidebar-mascot" style={{
-        padding: '1.5rem 1.25rem',
+        padding: '1rem 0.5rem 1.25rem',
         borderTop: '1px solid var(--border-subtle)',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: '0.75rem',
+        gap: '0.625rem',
       }}>
-        <Skull state={mascotState} size={56} showLabel />
+        <BonesMascot pose={phase} size={180} />
+        <span style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.5625rem',
+          letterSpacing: '0.22em',
+          textTransform: 'uppercase',
+          color: 'var(--text-secondary)',
+        }}>
+          bones · {phase}
+        </span>
       </div>
 
       {/* Confidence badge — hidden in top-bar mode */}

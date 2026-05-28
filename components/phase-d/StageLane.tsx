@@ -67,7 +67,10 @@ export function StageLane({ phase }: StageLaneProps) {
               animate={{ opacity: isActive || isDone ? 1 : 0.35, scale: isActive ? 1 : 0.94 }}
               transition={{ duration: 0.28, ease: [0.65, 0, 0.35, 1] }}
             >
-              <StatusPill phase={stage} active={isActive} size="sm" />
+              {/* Fix U2: completed stages render uniformly as SUCCESS (lime + ✓)
+                  instead of keeping their phase-specific color. Eliminates the
+                  cyan / cyan / lime / amber visual confusion on DONE state. */}
+              <StatusPill phase={stage} active={isActive} done={isDone} size="sm" />
             </motion.div>
           </div>
         )

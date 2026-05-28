@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { MASCOT_POSES } from '@/components/MascotWidget'
+import { MASCOT_POSES } from '@/components/BonesMascot'
 
 /**
- * Locks the pose taxonomy. If poses drift, the eventual 3D model's animation-clip
- * mapping will silently mismatch — this catches it. The mapping itself lands when
- * the model arrives; for now we guard the canonical pose set.
+ * Locks the pose taxonomy. The 11 owner-supplied PNGs in /public/mascot/ are
+ * keyed by these names — if the taxonomy drifts, the BonesMascot crossfade
+ * will 404 silently. This test guards the canonical pose set.
  */
-describe('MascotWidget pose taxonomy', () => {
+describe('BonesMascot pose taxonomy', () => {
   it('exposes exactly 9 poses (DESIGN.md §8 minus v1.5 uncertain)', () => {
     expect(MASCOT_POSES).toHaveLength(9)
   })

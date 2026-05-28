@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 
 interface StatCardProps {
   label: string
@@ -56,7 +57,19 @@ function Sparkline({ series, color }: { series: number[]; color: string }) {
     .join(' ')
   return (
     <svg width={w} height={h} style={{ display: 'block' }} aria-hidden>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" opacity={0.7} />
+      {/* Fix audit 2026-05-27 (DESIGN.md §11 S8): sparkline draws in over 600ms
+          via pathLength stroke-dasharray trick. Respects reduced motion (Framer
+          default behavior). */}
+      <motion.polyline
+        points={pts}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        opacity={0.7}
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+      />
     </svg>
   )
 }

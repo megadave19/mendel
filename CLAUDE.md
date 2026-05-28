@@ -323,6 +323,9 @@ Phase D fixes the gap between v1.0's PRD-specified aesthetic ("Awwwards-tier cyb
 - Mascot speaking, captioning, or explaining. Reactions only, no chatbot tone.
 - Dropping the cyberpunk-CRT brief at execution time. ScanlineOverlay is page-level. ASCII dividers used. Glow is semantic, not decorative.
 - Generic [21st.dev](http://21st.dev) / preset components used as-is. Build custom against [DESIGN.md](http://DESIGN.md).
+- **Dead controls** (buttons / links / command-bar keys without working handlers). Wire it, remove it, or render visibly-disabled with `title="coming soon"`. (Added 2026-05-26 — §7.2a.)
+- **Decorative-only data viz on primary screens** (graphs/charts/lists with no real data and no interaction). Wire to real data + add a meaningful interaction, or remove the component. (Added 2026-05-26 — §7.2a.)
+- **Declaring done on typecheck/lint/tests alone** without the §7.2 step 6 spec-conformance audit (per-screen brief ↔ live screenshot, met/missed list). (Added 2026-05-26 — §7.2a.)
 
 If you find yourself looking for a way around any of these: stop, write `STATE.md` note, surface to owner.
 
@@ -356,12 +359,26 @@ Before declaring ANY feature done, the following checklist must pass. If it does
 1. **Compiles**: `pnpm typecheck` is clean
 2. **Lints**: `pnpm lint` is clean (warnings OK, errors not)
 3. **Unit-tested**: new utility functions have tests; new Zod schemas have valid+invalid tests
-4. **Wired**: if the feature has a UI surface, every button/link triggers the intended action when clicked. No dead controls.
-5. **Smoke-tested**: `pnpm smoke` passes (Playwright E2E for the critical flows)
-6. **Manually verified**: I (Claude) describe the verification steps in the chat. The owner manually walks through them and confirms.
-7. **Logged in [STATE.md](http://STATE.md)**: feature name, what was built, how it was verified.
+4. **Wired**: if the feature has a UI surface, every button/link triggers the intended action when clicked. No dead controls. (See §7.2a.)
+5. **No decorative-only data components**: any UI element that represents data (graph, chart, list, map) on a primary screen must be wired to real data AND have at least one meaningful interaction. Pure decoration is reserved for marketing surfaces. (See §7.2a.)
+6. **Visual self-audit against the spec brief**: open DESIGN.md §11 to the per-screen brief. List every requirement as a checkbox. Screenshot the live screen. For each checkbox mark **met / partial / missed / violated**. Any miss → not done; fix before continuing. (See §7.2a — this is the step that has historically been skipped.)
+7. **Smoke-tested**: `pnpm smoke` passes (Playwright E2E for the critical flows)
+8. **Manually verified**: I (Claude) describe the verification steps in the chat. The owner manually walks through them and confirms.
+9. **Logged in [STATE.md](http://STATE.md)**: feature name, what was built, how it was verified, AND the spec-conformance audit result (which boxes met/missed).
 
 This last point is critical: **vibe-coded features are not done because Claude says they are. They're done when the owner has manually verified the working behavior.** This isn't burdensome — the manual walk-through is usually 2-5 minutes per feature.
+
+### 7.2a. Hard rules added 2026-05-26 — root-cause fixes for shipped-but-broken features
+
+The pattern: detailed spec → I built something matching the description → declared done on typecheck/lint/tests → owner found dead buttons, decorative-only data viz, and silent spec violations on screen. These rules block that path.
+
+**Dead-control rule (§7.2 step 4):** every interactive element in shipped code MUST have a working handler. If a feature is planned-not-built, do NOT render the control. `onClick={() => {}}`, missing `onPress`, and `href="#"` placeholders are forbidden. The acceptable patterns are: (a) wire it for real, (b) remove the control entirely, (c) render `aria-disabled='true'` with a `title="coming soon"` tooltip and visibly muted styling.
+
+**Decorative-data rule (§7.2 step 5):** if a component visually represents the user's data (a graph of their deps, a chart of their issues, a map of their scans), it MUST be backed by real data and offer at least one meaningful interaction (hover tooltip, click-to-act, filter, drill-down). Pure WebGL eye-candy with no semantic load belongs in marketing surfaces only, never on `/scan/[id]`, `/dashboard`, etc.
+
+**Spec-conformance audit (§7.2 step 6):** every per-screen build ends with a side-by-side: per-screen brief in DESIGN.md §11 ↔ live screenshot. Output a checklist with met/missed for each requirement before declaring done. Skipping this is what caused the S4 audit findings of 2026-05-26.
+
+**Spec-deviation protocol:** BEFORE deviating from any spec requirement (DESIGN.md, PRD, TRD, CLAUDE.md) — STOP. Write a STATE.md note describing (a) the spec requirement, (b) why I'm proposing to deviate, (c) two paths (comply vs deviate) with trade-offs. Surface to owner. Wait for direction. **Never deviate silently.** Examples of past silent deviations: stripping the owner-supplied mascot textures to lerp emissive color, inventing procedural FX choreography, shipping a decorative dep graph in place of a functional one.
 
 ### 7.3 Phase Integration Gates (mandatory, half-day each)
 

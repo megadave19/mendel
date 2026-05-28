@@ -53,8 +53,11 @@ export function TerminalLog({ lines, live = true }: TerminalLogProps) {
         const isLast = i === lines.length - 1
         return (
           <div key={line.id} style={{ display: 'flex', gap: '0.75rem', alignItems: 'baseline' }}>
-            <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-              {fmtTime(line.t)}
+            <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: '3.25rem' }}>
+              {/* Fix B2 (audit 2026-05-26): playback rows have no per-event
+                  timing in the DB, so they pass a -1 sentinel and we render
+                  an em-dash instead of the misleading `00.00`. */}
+              {line.t < 0 ? '—' : fmtTime(line.t)}
             </span>
             <span
               style={{

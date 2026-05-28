@@ -7,6 +7,7 @@ import type {
   RepoMeta,
   MonorepoDetectionResult,
   OpenPR,
+  PullRequestState,
 } from './types'
 import { GitHubError } from './types'
 
@@ -141,13 +142,21 @@ export async function findOpenPRsByHeadPattern(
   }
 }
 
-// ─── Create Draft PR (Phase 1C) ───────────────────────────────────────────────
+// ─── Create PR (Phase 1C: Draft only; v1.5: gated standard or Draft) ─────────
+//
+// Backward-compatible: `draft` is optional and defaults to true so any v1.0
+// caller that hasn't been updated still gets the Draft-only behaviour.
+//
+// CLAUDE.md §5b v1.5 rule 5: standard (non-Draft) PRs are ONLY permitted
+// when the runner's threshold gate has resolved to mode='standard'. The
+// gate logic lives in lib/agent/confidence/threshold.ts; this function just
+// honors what the caller asks for.
 
 export async function createDraftPR(
   pat: string,
   owner: string,
   repo: string,
-  opts: { title: string; body: string; head: string; base: string },
+  opts: { title: string; body: string; head: string; base: string; draft?: boolean },
 ): Promise<string> {
   const client = new Octokit({ auth: pat })
   try {
@@ -158,11 +167,65 @@ export async function createDraftPR(
       body: opts.body,
       head: opts.head,
       base: opts.base,
-      draft: true,
+      draft: opts.draft ?? true,
     })
     return data.html_url
   } catch (err) {
     throw wrapError(err)
+  }
+}
+
+// ─── PR state (v1.5 W#10 Push 2 — automated rejection detection) ──────────────
+
+/**
+ * Fetch the current state of a single PR. Used by the PR-state poller to
+ * detect when a Mendel-opened PR was merged (accepted) or closed without
+ * merge (rejected → feeds the learning loop).
+ */
+export async function getPullRequestState(
+  pat: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<PullRequestState> {
+  const client = new Octokit({ auth: pat })
+  try {
+    const { data } = await client.rest.pulls.get({ owner, repo, pull_number: prNumber })
+    return {
+      state: data.state === 'closed' ? 'closed' : 'open',
+      merged: data.merged ?? false,
+      mergedAt: data.merged_at ?? null,
+      closedAt: data.closed_at ?? null,
+    }
+  } catch (err) {
+    throw wrapError(err)
+  }
+}
+
+/**
+ * Latest human comment on a PR (PRs are issues for the comments API). Used as
+ * the verbatim rejection reason when a PR is closed without merge. Returns
+ * null when there are no comments — the poller then uses a clearly-labeled
+ * auto-detected reason instead of fabricating one (CLAUDE.md §5b).
+ */
+export async function getLatestPullRequestComment(
+  pat: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<string | null> {
+  const client = new Octokit({ auth: pat })
+  try {
+    const { data } = await client.rest.issues.listComments({
+      owner, repo, issue_number: prNumber, per_page: 100,
+    })
+    if (data.length === 0) return null
+    const last = data[data.length - 1]
+    const body = (last.body ?? '').trim()
+    return body.length > 0 ? body : null
+  } catch {
+    // Comment fetch is best-effort context; never fail the poll over it.
+    return null
   }
 }
 

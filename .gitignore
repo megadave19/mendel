@@ -23,11 +23,16 @@ logs/
 # pnpm content-addressable store (created by sandbox runs inside fixtures)
 .pnpm-store/
 
-# Database files
-prisma/*.db
-prisma/*.db-journal
-prisma/*.db-wal
-prisma/*.db-shm
+# Database files — match anywhere (incl. nested prisma/prisma/dev.db from a
+# relative DATABASE_URL). These hold runtime scan data + encrypted PATs.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
 
 # Debug logs
 npm-debug.log*
@@ -62,3 +67,7 @@ __pycache__/
 # 3D model source (only the optimized public/mascot/bones.glb is committed)
 Meshy_AI_Neon_Bearded_Skeleton_biped/
 bones-model.zip
+
+# Original-resolution mascot source art (17MB) — runtime uses the optimized
+# public/mascot/bones-*.png; keep originals local only.
+public/mascot/_orig/

@@ -3,7 +3,7 @@
  * DESIGN.md §10, §11 S4, §12.
  */
 
-import type { MascotPose } from '@/components/MascotWidget'
+import type { MascotPose } from '@/components/BonesMascot'
 
 /** The four work stages shown in the StageLane (DESIGN.md §11 S4). */
 export type Stage = 'SCAN' | 'DIAGNOSE' | 'PATCH' | 'VERIFY'
@@ -32,8 +32,31 @@ export interface LogLine {
   t: number
 }
 
-/** v1.0 confidence is always "medium" (single-signal). v1.5 adds buckets. */
-export type ConfidenceLevel = 'medium'
+/**
+ * v1.5 confidence buckets per TRD §9.5 (≥80 high, 60–79 medium, <60 low).
+ * v1.0 scans still surface as `'medium'` via the stub fallback path in
+ * `dbIssueToVM` — see CLAUDE.md §5b "never inflate".
+ */
+export type ConfidenceLevel = 'high' | 'medium' | 'low'
+
+/**
+ * v1.5 — Calibrated confidence detail for an Issue. Optional on IssueVM so
+ * v1.0 stub data renders without it (just the bucket label). When present,
+ * the UI surfaces the numeric score + per-symbol tags + verification cap.
+ */
+export interface ConfidenceData {
+  bucket: ConfidenceLevel
+  /** 0–100. */
+  score: number
+  /** True if verification failure capped the score at 50 (forces "low"). */
+  capped: boolean
+  /** Which signal tier produced the analysis (UI shows in tooltip). */
+  tier: 'dts' | 'api-extractor' | 'ast-only' | 'none'
+  /** 0–100 — proportion of OLD version's symbols we could analyze. */
+  coveragePercent: number
+  /** Per-symbol scores with optional human-readable tag. Sorted alphabetically. */
+  perBreakingChange: Array<{ symbol: string; score: number; tag?: string }>
+}
 
 /** A single diff hunk line for the DiffViewer. */
 export interface DiffLine {
@@ -64,4 +87,10 @@ export interface IssueVM {
   verificationPassed: boolean
   /** Set once a Draft PR is opened (S7). */
   prUrl?: string
+  /**
+   * v1.5 — when the persisted confidence column held a calibrated score
+   * (not the v1.0 stub), this surfaces the full detail. Null/undefined for
+   * v1.0 scans. UI components must accept absence gracefully.
+   */
+  confidenceData?: ConfidenceData
 }

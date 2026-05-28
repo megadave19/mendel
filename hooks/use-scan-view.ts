@@ -16,7 +16,7 @@ import { useScanStream } from '@/hooks/use-scan-stream'
 import { useMockScan, MOCK_DEPS, type MockScanState } from '@/hooks/use-mock-scan'
 import type { AgentEvent, AgentPhase } from '@/lib/agent/runner'
 import type { IssueVM, LogLine, Phase } from '@/components/phase-d/types'
-import type { DepNode } from '@/components/phase-d/DepGraph3D'
+import type { DepNode } from '@/components/phase-d/DepGraph'
 
 const DEMO_ID = 'demo'
 
@@ -56,6 +56,14 @@ function useRealScanView(id: string): MockScanState {
   const { entries, done } = useScanStream(id)
   const [enriched, setEnriched] = useState<IssueVM[] | null>(null)
   const [deps, setDeps] = useState<DepNode[]>([])
+  /**
+   * Persisted timing for playback. Fix B1 (audit 2026-05-26): on DONE scans
+   * the live stream is empty (it never re-replays), so `entries` is [] and
+   * elapsedMs computed below would be 0 → status strip showed `000.0s`.
+   * Pull `startedAt` + `completedAt` from the API so playback shows the real
+   * total duration.
+   */
+  const [persistedElapsedMs, setPersistedElapsedMs] = useState<number | null>(null)
 
   // Derive the view model from the streamed entries.
   const derived = useMemo(() => {
@@ -102,7 +110,8 @@ function useRealScanView(id: string): MockScanState {
     return { phase, lines, issues, activeNodeId, elapsedMs }
   }, [entries])
 
-  // On completion, fetch persisted issues for full detail (diagnosis/diff/notAnalyzed).
+  // On completion, fetch persisted issues for full detail (diagnosis/diff/notAnalyzed)
+  // and the real start/complete timestamps for playback elapsed-time (Fix B1).
   useEffect(() => {
     if (!done) return
     let cancelled = false
@@ -112,11 +121,15 @@ function useRealScanView(id: string): MockScanState {
         if (r.status === 404) notFound()
         return r.json()
       })
-      .then((data: { issues?: IssueVM[]; deps?: string[] }) => {
+      .then((data: { issues?: IssueVM[]; deps?: string[]; startedAt?: string; completedAt?: string | null }) => {
         if (cancelled) return
         if (Array.isArray(data.issues) && data.issues.length > 0) setEnriched(data.issues)
         if (Array.isArray(data.deps) && data.deps.length > 0) {
           setDeps(data.deps.map((name) => ({ id: name, label: name })))
+        }
+        if (data.startedAt && data.completedAt) {
+          const ms = new Date(data.completedAt).getTime() - new Date(data.startedAt).getTime()
+          if (Number.isFinite(ms) && ms > 0) setPersistedElapsedMs(ms)
         }
       })
       .catch(() => {})
@@ -135,6 +148,8 @@ function useRealScanView(id: string): MockScanState {
 
   let lines = derived.lines
   if (isPlayback) {
+    // Fix B2: -1 sentinel = "no timing available" → TerminalLog renders em-dash
+    // instead of misleading `00.00` timestamps on every playback row.
     lines = [
       {
         id: 'pb-head',
@@ -142,22 +157,26 @@ function useRealScanView(id: string): MockScanState {
         text: issues.length > 0
           ? `Playback — scan complete. ${issues.length} issue(s) found.`
           : 'Playback — scan complete. No saved issue detail.',
-        t: 0,
+        t: -1,
       },
       ...issues.map((iss, i) => ({
         id: `pb-${i}`,
         stage: 'DONE' as Phase,
         text: `${iss.dep} ${iss.currentVersion} → ${iss.latestVersion}${iss.prUrl ? ' · Draft PR opened' : ''}`,
-        t: 0,
+        t: -1,
       })),
     ]
   }
+
+  // Fix B1: prefer the persisted (completed - started) duration on a finished
+  // scan; fall back to the live-stream-derived elapsed for in-flight scans.
+  const elapsedMs = (done && persistedElapsedMs != null) ? persistedElapsedMs : derived.elapsedMs
 
   return {
     phase: isPlayback ? 'DONE' : derived.phase,
     lines,
     activeNodeId: isPlayback ? null : derived.activeNodeId,
-    elapsedMs: derived.elapsedMs,
+    elapsedMs,
     depsScanned: issues.length,
     issuesFound: issues.length,
     issues,

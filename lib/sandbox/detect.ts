@@ -51,3 +51,44 @@ export function hasBuildScript(repoPath: string): boolean {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> }
   return Boolean(pkg.scripts?.build)
 }
+
+/**
+ * v1.5 W#11 (PRD F17) — detect whether the target repo has a TypeScript
+ * project. JS-only repos (no tsconfig.json) are still accepted but skip the
+ * Phase B tsc step. The semantic-diff signal already auto-falls-back to AST
+ * Tier-3 for these repos; the lower confidence is surfaced naturally.
+ *
+ * Detection rule: tsconfig.json exists at repo root (the standard location).
+ * Repos that use a non-standard tsconfig path are treated as JS-only — the
+ * trade-off is "false-negative leaves typecheck off" rather than "false-
+ * positive runs tsc with no config and fails," which is the safer default.
+ */
+export function hasTsConfig(repoPath: string): boolean {
+  return existsSync(path.join(repoPath, 'tsconfig.json'))
+}
+
+/**
+ * v1.5 W#11 — detect the test runner used by the repo. Returns the runner
+ * name (for logs + UI) plus the actual shell command from detectTestCommand.
+ * Supports vitest, jest, and "package-script-only" (when scripts.test exists
+ * but no recognized runner is in deps).
+ */
+export type TestRunner = 'vitest' | 'jest' | 'script' | 'none'
+export function detectTestRunner(repoPath: string): TestRunner {
+  const pkgPath = path.join(repoPath, 'package.json')
+  if (!existsSync(pkgPath)) return 'none'
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+      scripts?: Record<string, string>
+      devDependencies?: Record<string, string>
+      dependencies?: Record<string, string>
+    }
+    const allDeps = { ...pkg.dependencies, ...pkg.devDependencies }
+    if ('vitest' in allDeps) return 'vitest'
+    if ('jest' in allDeps) return 'jest'
+    if (pkg.scripts?.test && !pkg.scripts.test.includes('no test')) return 'script'
+    return 'none'
+  } catch {
+    return 'none'
+  }
+}

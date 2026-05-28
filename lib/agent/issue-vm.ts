@@ -13,6 +13,9 @@
 import { z } from 'zod'
 import type { Issue } from '@prisma/client'
 import type { BreakingChange } from '@/lib/agent/signals/changelog'
+import type { SemanticDiff } from '@/lib/agent/signals/semantic-diff'
+import type { ConfidenceScore } from '@/lib/agent/confidence/score'
+import { ConfidenceScoreSchema } from '@/lib/agent/confidence/score'
 import type { Diagnosis } from '@/lib/agent/phases/diagnose'
 import type { FilePatch } from '@/lib/agent/patching/full-file'
 import type { StaleDep } from '@/lib/agent/phases/detect'
@@ -74,9 +77,21 @@ export function persistIssueData(args: {
   patches: FilePatch[]
   verificationPassed: boolean
   prUrl?: string
+  /** v1.5 — Semantic-diff signal output. Null if signal failed or was skipped. */
+  semanticDiff?: SemanticDiff | null
+  /**
+   * v1.5 Workstream #2 — Full calibrated ConfidenceScore. When present, it
+   * replaces the v1.0 `{ level: 'medium' }` stub in the `confidence` column.
+   * When absent, we fall back to the stub to preserve §5b honest framing
+   * (a missing score must NOT be misread as "high confidence").
+   */
+  confidenceScore?: ConfidenceScore | null
 }) {
-  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl } = args
+  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore } = args
 
+  // Evidence: prefer changelog citations; if none, fall back to npm link.
+  // Once Workstream #2 (confidence scoring) lands, semantic-diff symbols can
+  // also be cited here. For Workstream #1 we keep the v1.0 evidence shape.
   const evidence =
     breakingChanges.length > 0
       ? breakingChanges.slice(0, 5).map((bc) => ({ label: `${bc.symbol} (${bc.changeType})`, url: bc.sourceUrl }))
@@ -91,17 +106,57 @@ export function persistIssueData(args: {
     evidence,
   }
 
+  // v1.5: Not-Analyzed grows when semantic-diff was successful — we drop the
+  // "no semantic API diff" disclosure since we DID one. Confidence framing
+  // (CLAUDE.md §5b) still requires honest disclosure of what we missed.
+  const notAnalyzed = semanticDiff && semanticDiff.coveragePercent > 0
+    ? [
+        `Analyzed ${semanticDiff.coveragePercent}% of exported symbols via ${semanticDiff.analysisTier} signal. The remainder was unanalyzable.`,
+        'Transitive dependency impact of the version bump.',
+        'Test coverage of the changed code paths.',
+      ]
+    : STANDARD_NOT_ANALYZED
+
+  // §5b honest framing: when no calibrated score is available, we DO NOT
+  // synthesize one. We persist the v1.0 stub so the UI keeps showing
+  // "medium" — never accidentally inflating to high.
+  const confidenceBlob = confidenceScore
+    ? confidenceScore
+    : { level: 'medium' as const }
+
   return {
     scanId,
     type: 'stale-dependency',
     severity: 'major',
-    confidence: JSON.stringify({ level: 'medium' }), // §5b: always medium in v1.0
+    confidence: JSON.stringify(confidenceBlob),
     diagnosis: JSON.stringify(diagnosisBlob),
     patch: JSON.stringify({ filePath: patches[0]?.filePath ?? 'package.json', diff: buildDiff(dep, patches) }),
     verification: JSON.stringify({ passed: verificationPassed }),
-    notAnalyzed: JSON.stringify(STANDARD_NOT_ANALYZED),
+    notAnalyzed: JSON.stringify(notAnalyzed),
     prUrl: prUrl ?? null,
     status: prUrl ? 'pr-opened' : 'diagnosed',
+    semanticDiff: semanticDiff ? JSON.stringify(semanticDiff) : null,
+  }
+}
+
+/**
+ * v1.5 Workstream #2 — read the persisted confidence blob and tell us
+ * whether it's a v1.0 stub or a full ConfidenceScore. Used by API + UI
+ * to display calibrated bucket/score when present, fallback to "medium"
+ * label when not.
+ */
+export function parseConfidenceBlob(raw: string | null | undefined):
+  | { kind: 'stub'; level: 'medium' }
+  | { kind: 'score'; value: ConfidenceScore }
+{
+  if (!raw) return { kind: 'stub', level: 'medium' }
+  try {
+    const obj = JSON.parse(raw)
+    const parsed = ConfidenceScoreSchema.safeParse(obj)
+    if (parsed.success) return { kind: 'score', value: parsed.data }
+    return { kind: 'stub', level: 'medium' }
+  } catch {
+    return { kind: 'stub', level: 'medium' }
   }
 }
 
@@ -125,12 +180,33 @@ export function dbIssueToVM(issue: Issue): IssueVM {
   const v = safeParse(VerificationBlob, issue.verification, { passed: false })
   const notAnalyzed = safeParse(z.array(z.string()), issue.notAnalyzed, STANDARD_NOT_ANALYZED)
 
+  // v1.5 Workstream #4: surface calibrated bucket + score when persisted as a
+  // full ConfidenceScore. v1.0 stub data keeps the 'medium' bucket and ships
+  // no confidenceData — UI components must accept absence (CLAUDE.md §5b: no
+  // synthetic numbers when only the stub exists).
+  const parsed = parseConfidenceBlob(issue.confidence)
+  let bucket: 'high' | 'medium' | 'low' = 'medium'
+  let confidenceData: IssueVM['confidenceData']
+  if (parsed.kind === 'score') {
+    bucket = parsed.value.bucket
+    confidenceData = {
+      bucket: parsed.value.bucket,
+      score: parsed.value.overall,
+      capped: parsed.value.verificationCapped,
+      tier: parsed.value.analysisCoverage.analysisTier,
+      coveragePercent: parsed.value.analysisCoverage.percentCovered,
+      perBreakingChange: parsed.value.perBreakingChange.map((p) => ({
+        symbol: p.symbol, score: p.score, tag: p.tag,
+      })),
+    }
+  }
+
   return {
     id: issue.id,
     dep: d.dep,
     currentVersion: d.currentVersion,
     latestVersion: d.latestVersion,
-    confidence: 'medium',
+    confidence: bucket,
     what: d.what,
     why: d.why,
     evidence: d.evidence,
@@ -139,5 +215,6 @@ export function dbIssueToVM(issue: Issue): IssueVM {
     notAnalyzed,
     verificationPassed: v.passed,
     prUrl: issue.prUrl ?? undefined,
+    confidenceData,
   }
 }

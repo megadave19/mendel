@@ -4,8 +4,13 @@ import { mkdirSync, rmSync, readFileSync } from 'fs'
 import { cloneRepo, detectMonorepo, getRepoMeta } from '@/lib/github'
 import { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
+import { parseSemanticDiff, type SemanticDiff } from './signals/semantic-diff'
+import { calculateConfidence } from './confidence/score'
+import { chooseSubmissionMode, explainSubmissionMode } from './confidence/threshold'
+import { summarizeScanConfidence } from './confidence/summary'
+import { buildAllowlist } from '@/lib/sandbox/iptables-allowlist'
 import { diagnoseIssue } from './phases/diagnose'
-import { patchFile } from './patching/full-file'
+import { patchFileSmart } from './patching'
 import { submitDraftPR } from './phases/submit'
 import {
   runPhaseA,
@@ -14,7 +19,7 @@ import {
   ensureSandboxImage,
   volumeName,
 } from '@/lib/sandbox/executor'
-import { detectPackageManager } from '@/lib/sandbox/detect'
+import { detectPackageManager, hasTsConfig, detectTestRunner } from '@/lib/sandbox/detect'
 import { db } from '@/lib/db'
 import { persistIssueData } from './issue-vm'
 import { buildReferenceIndex, findPackageUsageSites } from './signals/ast-parser'
@@ -82,10 +87,36 @@ function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
 
 // ─── Runner ──────────────────────────────────────────────────────────────────
 
-const TOKEN_CAP = 250_000
-const MAX_DEPS = 3 // max deps to process per scan
+// v1.5 W#7: token caps lifted per CLAUDE.md §5 Rule 10 + TRD §7.2.
+// v1.0 capped at 250k per scan / 3 files per dep.
+// v1.5 caps at 500k per scan; 100k per issue (per-issue budget gates file
+// ranking — files with the highest impact-score are patched first, lower
+// ones skipped if the budget runs out for that issue).
+const TOKEN_CAP = 500_000
+const MAX_DEPS = 3                  // still cap deps per scan (changelog-LLM cost)
+const PER_ISSUE_TOKEN_BUDGET = 100_000
+const PER_FILE_TOKEN_ESTIMATE = 8_000
 
-export async function runScan(scanId: string, repoUrl: string, pat: string): Promise<void> {
+/**
+ * Optional per-scan overrides supplied by the API.
+ * v1.5 Workstream #4: `confidenceThreshold` lets the user override the env
+ * default (MENDEL_CONFIDENCE_THRESHOLD) via the Settings slider. Clamped
+ * server-side by the API Zod schema (40–100) before reaching here.
+ * v1.5 Workstream #8: `tier2AllowlistHosts` opts the scan into extra
+ * sandbox-egress hostnames beyond the default tier-1 list. Validated +
+ * deduped server-side. Each rejected host is logged.
+ */
+export interface RunScanOptions {
+  confidenceThreshold?: number
+  tier2AllowlistHosts?: string[]
+}
+
+export async function runScan(
+  scanId: string,
+  repoUrl: string,
+  pat: string,
+  options: RunScanOptions = {},
+): Promise<void> {
   const emitter = new EventEmitter()
   scanEmitters.set(scanId, emitter)
 
@@ -134,6 +165,17 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       /* non-fatal — graph falls back to a default node set */
     }
 
+    // v1.5 W#11 (PRD F17): surface repo characteristics so the user knows
+    // what kind of analysis they'll get. JS-only repos route through Tier-3
+    // semantic-diff + skip Phase B typecheck — both already wired upstream,
+    // but logging it here makes the trade-off visible (CLAUDE.md §5b).
+    const pmDetected = detectPackageManager(repoPath)
+    const isTs = hasTsConfig(repoPath)
+    const tr = detectTestRunner(repoPath)
+    log(
+      `Repo profile — package manager: ${pmDetected} · type system: ${isTs ? 'TypeScript (tsconfig.json)' : 'JavaScript (no tsconfig — Tier-3 confidence)'} · test runner: ${tr}`,
+    )
+
     log('Checking dependencies...')
     const staleDeps = await detectStaleDeps(repoPath, log)
 
@@ -174,19 +216,50 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       emit({ type: 'issue', dep: dep.name, currentVersion: dep.currentVersion, latestVersion: dep.latestVersion })
       issuesFound++
 
-      // ── Changelog signal ────────────────────────────────────────────────────
-      log(`Fetching changelog for ${dep.name}...`)
-      const breakingChanges = await parseBreakingChanges(
-        dep.name,
-        dep.currentVersion,
-        dep.latestVersion,
-        pat,
-      )
+      // ── Signals: changelog + semantic-diff in parallel ──────────────────────
+      // v1.5 Workstream #1: semantic-diff runs alongside changelog. Both are
+      // independent network-bound operations so we await Promise.all. Either
+      // can fail individually without taking down the other (failures swallow
+      // to empty/null — the agent never abandons a dep just because one
+      // signal was unavailable).
+
+      // Build the refIndex once per dep (cheap — in-memory AST parse of the
+      // repo). PATCH later rebuilds its own; this one is for affectedSitesInRepo
+      // in semantic-diff.
+      let refIndexForSignal: ReturnType<typeof buildReferenceIndex> | undefined
+      try {
+        refIndexForSignal = buildReferenceIndex(repoPath)
+      } catch (err) {
+        log(`refIndex build failed (${String(err).slice(0, 80)}) — semantic-diff will report empty affectedSitesInRepo`)
+      }
+
+      log(`Fetching changelog + semantic-diff for ${dep.name}...`)
+      const [breakingChanges, semanticDiff] = await Promise.all([
+        parseBreakingChanges(dep.name, dep.currentVersion, dep.latestVersion, pat).catch((err) => {
+          log(`changelog signal failed: ${String(err).slice(0, 120)}`)
+          return [] as Awaited<ReturnType<typeof parseBreakingChanges>>
+        }),
+        parseSemanticDiff(dep.name, dep.currentVersion, dep.latestVersion, { refIndex: refIndexForSignal })
+          .then((d: SemanticDiff): SemanticDiff | null => d)
+          .catch((err: unknown): SemanticDiff | null => {
+            log(`semantic-diff signal failed: ${String(err).slice(0, 120)}`)
+            return null
+          }),
+      ])
+
       log(
         breakingChanges.length > 0
-          ? `Found ${breakingChanges.length} breaking change(s)`
-          : 'No breaking changes in changelog — proceeding with version bump',
+          ? `Changelog: ${breakingChanges.length} breaking change(s)`
+          : 'Changelog: no breaking changes — proceeding with version bump',
       )
+      if (semanticDiff) {
+        log(
+          `Semantic-diff (${semanticDiff.analysisTier}): ${semanticDiff.removedExports.length} removed, ` +
+            `${semanticDiff.signatureChanges.length} signature changes, ${semanticDiff.newDeprecations.length} new @deprecated. ` +
+            `${semanticDiff.affectedSitesInRepo.length} affected site(s) in repo. ` +
+            `Coverage: ${semanticDiff.coveragePercent}%.`,
+        )
+      }
       tokenEstimate.used += 4_000
 
       // ── DIAGNOSE ────────────────────────────────────────────────────────────
@@ -202,27 +275,53 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       // sees ~20 source files in its context and routinely misses where the
       // dep is actually imported (the Antarang case shipped a version-bump-
       // only PR for exactly this reason). Augment with AST findings.
-      let filesToModify: string[] = ['package.json']
+      //
+      // v1.5 W#7: drop the hard 3-file cap; rank by impact (usage-count) and
+      // budget by per-issue token estimate (TRD §7.2). package.json is always
+      // first. AST usage files come next, ranked by how many sites they have.
+      // Diagnosis-suggested files fill remaining budget.
+      const rankedFiles: string[] = ['package.json']
       try {
         const refIndex = buildReferenceIndex(repoPath)
-        const usageFiles = [...new Set(findPackageUsageSites(refIndex, dep.name).map((u) => u.filePath))]
-        if (usageFiles.length > 0) {
-          log(`AST: ${usageFiles.length} file(s) actually import ${dep.name} — patching the real usage sites`)
+        const usageSites = findPackageUsageSites(refIndex, dep.name)
+        // Rank files by usage count (most affected sites first).
+        const fileImpact = new Map<string, number>()
+        for (const u of usageSites) fileImpact.set(u.filePath, (fileImpact.get(u.filePath) ?? 0) + 1)
+        const usageFilesRanked = [...fileImpact.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([f]) => f)
+        if (usageFilesRanked.length > 0) {
+          log(`AST: ${usageFilesRanked.length} file(s) actually import ${dep.name} — ranking by usage count`)
         }
-        const merged = new Set<string>(filesToModify)
-        for (const f of usageFiles) if (merged.size < 3) merged.add(f)
-        for (const f of diagnosis.filesToModify) if (merged.size < 3) merged.add(f)
-        filesToModify = [...merged]
+        // Compose final list: package.json + AST-ranked + diagnosis suggestions,
+        // dedup preserving order.
+        const seen = new Set<string>(rankedFiles)
+        for (const f of usageFilesRanked) { if (!seen.has(f)) { rankedFiles.push(f); seen.add(f) } }
+        for (const f of diagnosis.filesToModify) { if (!seen.has(f)) { rankedFiles.push(f); seen.add(f) } }
       } catch (astErr) {
         log(`AST scan failed (${String(astErr).slice(0, 120)}) — falling back to LLM-suggested files`)
-        filesToModify = [...new Set(['package.json', ...diagnosis.filesToModify])].slice(0, 3)
+        const seen = new Set<string>(rankedFiles)
+        for (const f of diagnosis.filesToModify) { if (!seen.has(f)) { rankedFiles.push(f); seen.add(f) } }
       }
 
       const patches = []
-      for (const filePath of filesToModify) {
-        const patch = await patchFile(repoPath, filePath, dep, breakingChanges, diagnosis, log)
-        if (patch) patches.push(patch)
-        tokenEstimate.used += 8_000
+      let perIssueTokens = 0
+      for (const filePath of rankedFiles) {
+        if (perIssueTokens + PER_FILE_TOKEN_ESTIMATE > PER_ISSUE_TOKEN_BUDGET) {
+          log(`Per-issue token budget (${PER_ISSUE_TOKEN_BUDGET}) reached — skipping remaining ${rankedFiles.length - patches.length - 1} file(s)`)
+          break
+        }
+        // v1.5 W#7: smart dispatcher picks full-file vs search-replace per file
+        // size (TRD §7.2), with fall-back to full-file on block-apply failure.
+        const result = await patchFileSmart(repoPath, filePath, dep, breakingChanges, diagnosis, log)
+        if (result.patch) patches.push(result.patch)
+        // search-replace blocks are ~3× more token-efficient than full-file
+        // for files > 150 lines; budget accordingly.
+        const fileCost = result.strategyUsed === 'search-replace'
+          ? Math.floor(PER_FILE_TOKEN_ESTIMATE / 3)
+          : PER_FILE_TOKEN_ESTIMATE
+        perIssueTokens += fileCost
+        tokenEstimate.used += fileCost
       }
 
       if (patches.length === 0) {
@@ -235,8 +334,23 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       const pm = detectPackageManager(repoPath)
       const verifyScanId = `${scanId}-${depSlug(dep.name)}`
 
-      log('Running Phase A — installing dependencies...')
-      const phaseA = await runPhaseA({ repoPath, scanId: verifyScanId, packageManager: pm })
+      // v1.5 W#8: build the iptables allowlist for Phase A. Tier-1 is always
+      // applied; tier-2 (user-opted extra hosts) is merged + validated.
+      // Rejected hosts surface as runner log lines so the user knows their
+      // opt-in didn't take effect (CLAUDE.md §5b "no silent drops").
+      const allowlist = buildAllowlist({ tier2: options.tier2AllowlistHosts })
+      if (allowlist.tier2Accepted.length > 0) {
+        log(`Sandbox allowlist: tier-1 (default) + tier-2 opt-in: ${allowlist.tier2Accepted.join(', ')}`)
+      }
+      for (const rej of allowlist.tier2Rejected) {
+        log(`⚠ Tier-2 allowlist rejected "${rej.value}" — ${rej.reason}`)
+      }
+
+      log('Running Phase A — installing dependencies (iptables-allowlisted egress)...')
+      const phaseA = await runPhaseA({
+        repoPath, scanId: verifyScanId, packageManager: pm,
+        allowlistHosts: allowlist.hosts,
+      })
       emit({
         type: 'verify',
         phase: 'A',
@@ -275,51 +389,116 @@ export async function runScan(scanId: string, repoUrl: string, pat: string): Pro
       // here is the dangerous case (it's how PR #17 on Antarang-Portfolio
       // landed as a bare version bump). Phase B (typecheck) failures still
       // open as draft-with-warning per the v1.0 §5b "medium confidence" intent.
+      // ── SCORE (v1.5 Workstream #2) ──────────────────────────────────────────
+      // Score MUST be computed BEFORE submit so the threshold gate (Workstream
+      // #3) can decide standard/draft/skip. Combines signals + verification
+      // into a calibrated ConfidenceScore. CLAUDE.md §5b: scoring is honest —
+      // disagreement lowers the score; verification failure caps at 50.
+      const confidenceScore = calculateConfidence({
+        breakingChanges,
+        semanticDiff,
+        patchedFilePaths: patches.map((p) => p.filePath),
+        verificationPassed,
+      })
+      log(
+        `Confidence: ${confidenceScore.overall}/100 (${confidenceScore.bucket})` +
+          (confidenceScore.verificationCapped ? ' — capped by verification failure' : '') +
+          ` · ${confidenceScore.perBreakingChange.length} symbol${confidenceScore.perBreakingChange.length === 1 ? '' : 's'} scored · ${confidenceScore.analysisCoverage.analysisTier} coverage ${confidenceScore.analysisCoverage.percentCovered}%`,
+      )
+
+      // ── SUBMIT (Workstream #3 threshold-gated) ──────────────────────────────
+      // Three outcomes:
+      //   - 'standard' (≥ threshold)   → non-Draft PR
+      //   - 'draft'    (40-threshold)  → Draft PR with low-confidence warning
+      //   - 'skip'     (< 40)          → no PR; persist diagnosis only
+      //
+      // Phase-A install failure is a HARD skip regardless of score — if we
+      // couldn't even install deps, the patch is unverifiable in any form
+      // (this is how the bare-bump PR #17 on Antarang-Portfolio landed).
       emit({ type: 'phase', phase: 'SUBMIT' })
       let prUrl: string | undefined
       if (!phaseA.success) {
         log('⚠ Skipping PR submission — install failed, patch could not be verified at all')
       } else {
-        try {
-          const result = await submitDraftPR(
-            repoPath,
-            owner,
-            repo,
-            meta.defaultBranch,
-            dep,
-            breakingChanges,
-            diagnosis,
-            patches,
-            verificationPassed,
-            pat,
-            log,
-          )
+        const thresholdCfg = { threshold: options.confidenceThreshold }
+        const submissionMode = chooseSubmissionMode(confidenceScore, thresholdCfg)
+        log(`Threshold gate: ${explainSubmissionMode(submissionMode, confidenceScore, thresholdCfg)}`)
 
-          prUrl = result.prUrl
-          if (!result.skipped) {
-            prsOpened++
-            emit({ type: 'pr', url: result.prUrl, branch: result.branchName })
+        if (submissionMode === 'skip') {
+          log('⚠ Skipping PR submission — score below floor (40). Diagnosis persisted for review.')
+        } else {
+          try {
+            const result = await submitDraftPR(
+              repoPath,
+              owner,
+              repo,
+              meta.defaultBranch,
+              dep,
+              breakingChanges,
+              diagnosis,
+              patches,
+              verificationPassed,
+              pat,
+              log,
+              confidenceScore,
+              submissionMode,
+            )
+
+            prUrl = result.prUrl
+            if (!result.skipped) {
+              prsOpened++
+              emit({ type: 'pr', url: result.prUrl, branch: result.branchName })
+            }
+          } catch (submitErr) {
+            log(`PR submission failed: ${String(submitErr)}`)
           }
-        } catch (submitErr) {
-          log(`PR submission failed: ${String(submitErr)}`)
         }
       }
 
       // ── PERSIST ─────────────────────────────────────────────────────────────
       // Store the finding so permalinks + playback (S5/S6/S7) render real data.
-      // persistIssueData enforces §5b: medium confidence + Not-Analyzed disclosures.
+      // persistIssueData enforces §5b: confidence framing + Not-Analyzed.
       try {
         await db.issue.create({
-          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl }),
+          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore }),
         })
       } catch (persistErr) {
         log(`Issue persist failed: ${String(persistErr)}`)
       }
     }
 
+    // v1.5 W#6: compute calibration summary from all persisted issues for
+    // this scan. Reads the issues we just wrote in the loop above. When
+    // none had calibrated data (v1.0 stub-only), `confidenceSummary` stays
+    // null and the dashboard renders an empty state (no fabricated zeros).
+    let confidenceSummaryJson: string | null = null
+    try {
+      const scanIssues = await db.issue.findMany({
+        where: { scanId },
+        select: { confidence: true, verification: true },
+      })
+      const summary = summarizeScanConfidence(scanIssues)
+      if (summary) {
+        confidenceSummaryJson = JSON.stringify(summary)
+        log(
+          `Calibration summary: avg ${summary.avgScore}/100 across ${summary.issuesCalibrated}/${summary.issuesTotal} issues · ` +
+            `buckets H${summary.bucketCounts.high}/M${summary.bucketCounts.medium}/L${summary.bucketCounts.low} · ` +
+            `verify-fail rate ${Math.round(summary.verificationFailureRate * 100)}%`,
+        )
+      }
+    } catch (summaryErr) {
+      log(`Confidence summary computation failed: ${String(summaryErr).slice(0, 120)}`)
+    }
+
     await db.scan.update({
       where: { id: scanId },
-      data: { status: 'completed', completedAt: new Date(), issuesFound, prsOpened },
+      data: {
+        status: 'completed',
+        completedAt: new Date(),
+        issuesFound,
+        prsOpened,
+        confidenceSummary: confidenceSummaryJson,
+      },
     })
 
     emit({

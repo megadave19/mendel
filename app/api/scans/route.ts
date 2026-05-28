@@ -8,6 +8,19 @@ import { applyRateLimit } from '@/lib/rate-limit'
 const StartScanSchema = z.object({
   repoUrl: z.string().url().includes('github.com'),
   pat: z.string().min(1),
+  /**
+   * v1.5 Workstream #4 — optional per-scan confidence threshold (40–100).
+   * Server clamps to that range. When omitted, runner falls back to
+   * MENDEL_CONFIDENCE_THRESHOLD env var (default 70).
+   */
+  confidenceThreshold: z.number().int().min(40).max(100).optional(),
+  /**
+   * v1.5 Workstream #8 — optional tier-2 sandbox allowlist hosts. Caps at
+   * 32 entries server-side. Per-host validation happens inside buildAllowlist;
+   * invalid entries are kept here so they surface as runner log lines (we
+   * never silently drop them per CLAUDE.md §5b).
+   */
+  tier2AllowlistHosts: z.array(z.string().max(253)).max(32).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -33,7 +46,11 @@ export async function POST(req: NextRequest) {
     // Fire and forget — SSE route streams progress
     // Pass plaintext PAT in-memory for this request's lifetime; runner
     // can also decrypt scan.encryptedPat if it needs to resume after restart.
-    void runScan(scan.id, body.repoUrl, body.pat)
+    // v1.5 W#4: optional confidence threshold travels with the scan request.
+    void runScan(scan.id, body.repoUrl, body.pat, {
+      confidenceThreshold: body.confidenceThreshold,
+      tier2AllowlistHosts: body.tier2AllowlistHosts,
+    })
 
     return NextResponse.json({ id: scan.id }, { status: 202 })
   } catch (err) {
@@ -61,6 +78,9 @@ export async function GET(req: NextRequest) {
       issuesFound: true,
       prsOpened: true,
       errorMessage: true,
+      // v1.5 W#6: surface the per-scan calibration summary so the dashboard
+      // panel can render trend + bucket distribution + regression rate.
+      confidenceSummary: true,
       // encryptedPat intentionally omitted — never returned to client
     },
   })

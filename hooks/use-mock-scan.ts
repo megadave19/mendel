@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LogLine, Phase, IssueVM } from '@/components/phase-d/types'
-import type { DepNode } from '@/components/phase-d/DepGraph3D'
+import type { DepNode } from '@/components/phase-d/DepGraph'
 
 // The issue the mock scan surfaces (mirrors a real axios 0.24 → 1.x finding).
 export const MOCK_ISSUE: IssueVM = {

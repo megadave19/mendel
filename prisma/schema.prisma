@@ -25,6 +25,10 @@ model Scan {
   deps          String?
   /// Captured failure reason (Fix #2 — was emit-only via SSE, lost after the fact)
   errorMessage  String?
+  /// v1.5 W#6 — aggregated calibration summary across this scan's issues.
+  /// JSON-stringified ScanConfidenceSummary (see lib/agent/confidence/summary.ts).
+  /// Null for v1.0 scans + scans where no issue had calibrated confidence data.
+  confidenceSummary String?
   issues        Issue[]
 }
 
@@ -42,6 +46,10 @@ model Issue {
   prUrl        String?
   status       String
   createdAt    DateTime @default(now())
+  /// v1.5 — Semantic-diff signal output (JSON stringified SemanticDiff per
+  /// TRD §6.4). Nullable because v1.0 scans + scans with skipped signal
+  /// won't have it. Used downstream by confidence scoring (Workstream #2).
+  semanticDiff String?
 }
 
 // (Fix #14) AgentLog removed — model was defined but never written by the runner.

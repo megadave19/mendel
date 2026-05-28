@@ -34,6 +34,17 @@ export interface OpenPR {
   draft: boolean
 }
 
+/**
+ * v1.5 W#10 Push 2 — current GitHub state of a Mendel-opened PR, used by the
+ * PR-state poller to detect merge/close transitions automatically.
+ */
+export interface PullRequestState {
+  state: 'open' | 'closed'
+  merged: boolean
+  mergedAt: string | null
+  closedAt: string | null
+}
+
 export type GitHubErrorKind =
   | 'auth'
   | 'rate-limit'

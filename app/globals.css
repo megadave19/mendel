@@ -237,12 +237,42 @@ code, pre, kbd, samp {
 .btn-primary:hover {
   background: var(--accent-primary);
   color: var(--bg-0);
-  box-shadow: var(--glow-primary);
+  /* §11 S3 spec: "hover lifts 1px + glow intensifies". The lift was missing. */
+  box-shadow: 0 0 32px rgba(198, 255, 61, 0.55), 0 1px 0 rgba(198, 255, 61, 0.4);
+  transform: translateY(-1px);
 }
 
 .btn-primary:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* §11 S2/S3 spec: PAT input + URL input "subtle phosphor focus ring".
+   Was missing — focus-visible already gives a hard cyan outline for a11y,
+   but inputs specifically deserve the brand-color soft pulse on focus. */
+@keyframes input-focus-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(198, 255, 61, 0.10); }
+  50%      { box-shadow: 0 0 0 4px rgba(198, 255, 61, 0.28); }
+}
+input[type="url"]:focus,
+input[type="password"]:focus,
+input[type="text"]:focus,
+input[type="email"]:focus {
+  animation: input-focus-pulse 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  input[type="url"]:focus,
+  input[type="password"]:focus,
+  input[type="text"]:focus,
+  input[type="email"]:focus {
+    /* !important wins over the global `*` reduced-motion rule that only
+       sets animation-duration. We want the name fully cleared. */
+    animation-name: none !important;
+    animation: none !important;
+    box-shadow: 0 0 0 2px rgba(198, 255, 61, 0.18);
+  }
 }
 
 .confidence-badge {
@@ -396,6 +426,34 @@ code, pre, kbd, samp {
 /* S1 hero — keep corner HUDs out of the way at narrow widths */
 @media (max-width: 1023px) {
   .s1-hud { font-size: 0.5625rem !important; }
+}
+
+/* Connect split layout (Connect audit 2026-05-27): main grid stacks below 1024px */
+.connect-grid > section { min-width: 0; }
+@media (max-width: 1023px) {
+  .connect-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto;
+  }
+  .connect-grid > section:first-child { border-right: none; border-bottom: 1px solid var(--border-subtle); }
+}
+
+/* Dashboard main grid (Dashboard audit 2026-05-27): stacks below 1280px so the
+   right rail doesn't push the table to single-row chaos */
+@media (max-width: 1279px) {
+  .dashboard-main-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Settings two-column (Settings audit 2026-05-27) */
+.settings-grid > section { min-width: 0; }
+@media (max-width: 1023px) {
+  .settings-grid { grid-template-columns: 1fr !important; }
+}
+
+/* New Scan two-column (New Scan audit 2026-05-27) */
+.new-scan-grid > section { min-width: 0; }
+@media (max-width: 1023px) {
+  .new-scan-grid { grid-template-columns: 1fr !important; }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── */

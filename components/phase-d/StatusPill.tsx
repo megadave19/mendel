@@ -23,11 +23,19 @@ interface StatusPillProps {
   label?: string
   /** active = filled + glow + LED pulse; idle = outline only. */
   active?: boolean
+  /**
+   * Fix U2 (audit 2026-05-26): completed stages should read uniformly as
+   * SUCCESS, not in their phase-specific color (SCAN-cyan, VERIFY-amber).
+   * `done` overrides the phase color with --accent-primary and renders a
+   * checkmark dot instead of the live pulse.
+   */
+  done?: boolean
   size?: 'sm' | 'md'
 }
 
-export function StatusPill({ phase, label, active = false, size = 'md' }: StatusPillProps) {
-  const color = PHASE_COLOR[phase]
+export function StatusPill({ phase, label, active = false, done = false, size = 'md' }: StatusPillProps) {
+  // `done` wins over `active` (you can't be both — done means past tense).
+  const color = done ? 'var(--accent-primary)' : PHASE_COLOR[phase]
   const text = label ?? phase
 
   return (
@@ -49,12 +57,17 @@ export function StatusPill({ phase, label, active = false, size = 'md' }: Status
         transition: 'all 180ms cubic-bezier(0.65,0,0.35,1)',
       }}
     >
-      <motion.span
-        aria-hidden
-        style={{ width: 5, height: 5, borderRadius: '50%', background: active ? 'var(--bg-0)' : color }}
-        animate={active ? { opacity: [0.4, 0.9, 0.4] } : { opacity: 1 }}
-        transition={active ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : undefined}
-      />
+      {done ? (
+        // Checkmark glyph replaces the live pulse on completed stages.
+        <span aria-hidden style={{ fontSize: '0.625rem', lineHeight: 1, color }}>✓</span>
+      ) : (
+        <motion.span
+          aria-hidden
+          style={{ width: 5, height: 5, borderRadius: '50%', background: active ? 'var(--bg-0)' : color }}
+          animate={active ? { opacity: [0.4, 0.9, 0.4] } : { opacity: 1 }}
+          transition={active ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : undefined}
+        />
+      )}
       {text}
     </span>
   )

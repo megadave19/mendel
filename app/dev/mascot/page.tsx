@@ -5,18 +5,17 @@
  *
  * CLAUDE.md §6b workflow step 5: build components in isolation at /dev/[component]
  * before integrating. This route lets the PM cycle every pose and confirm the
- * 3D Bones model + per-pose procedural reactions (glow color, motion) work end-to-end.
+ * 2D Bones art + crossfade + loop frames work end-to-end.
  *
  * Dev-only surface. Not linked from the app nav; not part of the 7 Phase D routes.
  */
 
 import { useState } from 'react'
-import { MascotWidget, MASCOT_POSES, type MascotPose } from '@/components/MascotWidget'
-
-const POSES = MASCOT_POSES
+import { BonesMascot, MASCOT_POSES, type MascotPose } from '@/components/BonesMascot'
 
 export default function DevMascotPage() {
   const [pose, setPose] = useState<MascotPose>('idle')
+  const [size, setSize] = useState<number>(280)
 
   return (
     <div
@@ -57,31 +56,50 @@ export default function DevMascotPage() {
           BONES
         </h1>
         <p style={{ fontSize: '0.75rem', color: '#9A9A9A', marginTop: '0.5rem' }}>
-          Operator of the Mendel machine · 3D model · reactions only
+          Maintainer of the Mendel machine · 2D art · crossfade + 2-frame loop
         </p>
       </div>
 
       {/* Stage */}
       <div
         style={{
-          padding: '2rem',
+          padding: '1.5rem',
           border: '1px solid rgba(255,255,255,0.12)',
           background: '#111111',
         }}
       >
-        <MascotWidget pose={pose} size={280} />
+        <BonesMascot pose={pose} size={size} />
       </div>
 
-      {/* Current pose readout */}
+      {/* Size + pose readout */}
       <div
         style={{
           fontSize: '0.75rem',
           letterSpacing: '0.15em',
           color: '#9A9A9A',
+          display: 'flex',
+          gap: '2rem',
         }}
       >
-        POSE: <span style={{ color: '#3DFFEE' }}>{pose}</span>
+        <span>
+          POSE: <span style={{ color: '#3DFFEE' }}>{pose}</span>
+        </span>
+        <span>
+          SIZE: <span style={{ color: '#3DFFEE' }}>{size}px</span>
+        </span>
       </div>
+
+      {/* Size slider */}
+      <input
+        type="range"
+        min={56}
+        max={400}
+        step={4}
+        value={size}
+        onChange={(e) => setSize(Number(e.target.value))}
+        style={{ width: '320px', accentColor: '#C6FF3D' }}
+        aria-label="Mascot size"
+      />
 
       {/* Pose switcher */}
       <div
@@ -93,7 +111,7 @@ export default function DevMascotPage() {
           maxWidth: '640px',
         }}
       >
-        {POSES.map((p) => {
+        {MASCOT_POSES.map((p) => {
           const active = p === pose
           return (
             <button
@@ -129,9 +147,10 @@ export default function DevMascotPage() {
           lineHeight: 1.6,
         }}
       >
-        3D model loaded from <span style={{ color: '#FFB84D' }}>/mascot/bones.glb</span>. Each pose
-        drives a different <span style={{ color: '#FFB84D' }}>emissive color</span> + motion (rotation,
-        bob, tilt, jitter). Falls back to an on-brand placeholder if the model can&apos;t load.
+        Each pose loads <span style={{ color: '#FFB84D' }}>/mascot/bones-[pose].png</span>. Idle,
+        scanning, and patching also load a <span style={{ color: '#FFB84D' }}>-2.png</span> loop
+        frame that alternates every 600ms for subtle life. <code>prefers-reduced-motion</code>{' '}
+        disables both crossfade and loop and snaps to the canonical frame.
       </p>
     </div>
   )
