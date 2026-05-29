@@ -9,6 +9,15 @@
 
 ## 0. Revisions Log
 
+**Rev 5 (2026-05-28)** — v2 roadmap expansion (local-first; cloud deferred to v3). Companion doc [V2_PLAN.md](http://v2_plan.md/) authored as the phased blueprint; this revision folds its durable specs into the PRD. Major changes:
+
+- **§12 expanded** from 9 roadmap bullets into 8 numbered features **F19–F26** with release sequencing (v2.0 → v2.4). New **§12b** carves out the cloud rearchitecture (multi-tenant, hosted sandbox, OAuth) as **v3**.
+- **v2 stays local** — Docker sandbox, PAT-session, SQLite retained; capability depth (eval bench, smoke-test, monorepo, multi-language, auto-merge, continuous monitoring, MCP) is the v2 focus. Cloud is v3.
+- **§7 Non-Goals updated** — monorepo, multi-language, auto-merge, and continuous monitoring move from "non-goal" to **in-scope for v2**.
+- **§8 Success Metrics** gains a **v2 column** (calibration accuracy from the eval bench, polyglot PR acceptance, auto-merge precision).
+- **§17 Capability Honesty** gains a v2 paragraph — **language-aware confidence ceilings** + the **honesty-of-action floor** gating auto-merge (new CLAUDE.md §5c).
+- Sequencing principle: **measure before expand** — v2.0 ships the eval harness + smoke-test layer first, so every later capability is validated against a fixture bench with calibration numbers.
+
 **Rev 4 (2026-05-20)** — post-v1.0-ship review + design iteration insertion. Major changes:
 
 - v1.0 ships functionally (agent works, real Draft PRs landed on `megadave19/mendel-test` for axios + typescript upgrades). UI shipped but does not earn the cyberpunk-CRT positioning — "AI-slop" execution.
@@ -105,26 +114,31 @@ Trust model is the same in both phases: *"the agent shows you exactly what it kn
 - Rejection-learning loop
 - Broader repo support (extended network allowlist, larger refactor scope via search-replace blocks)
 
-### Non-Goals (both phases)
+### Non-Goals (v1.0 / v1.5)
 
-- Multi-language support (TypeScript/JavaScript only)
-- Auto-merge — every PR requires human review
-- Continuous monitoring across repos in parallel
-- **Monorepos** (workspaces explicitly out of scope through v1.5; v2 territory)
-- Enterprise auth, multi-tenancy, billing
-- General-purpose autonomous coding
+- Multi-language support (TypeScript/JavaScript only) — **→ in scope for v2 (F23: Python, Go, Rust)**
+- Auto-merge — every PR requires human review — **→ in scope for v2 (F24, opt-in + narrow envelope per CLAUDE.md §5c honesty-of-action floor)**
+- Continuous monitoring across repos — **→ in scope for v2 (F25, local cron worker)**
+- **Monorepos** (workspaces explicitly out of scope through v1.5) — **→ in scope for v2 (F21)**
+
+### Non-Goals (still deferred to v3 / out of scope entirely)
+
+- Enterprise auth, multi-tenancy, billing — **v3 (cloud)**
+- Cloud deployment, hosted sandbox, OAuth — **v3 (cloud); see §12b**
+- General-purpose autonomous coding — **out of scope entirely**
 
 ## 8. Success Metrics
 
-| Metric | v1.0 target | v1.5 target |
-| --- | --- | --- |
-| PR acceptance rate on real public repos | ≥ 25% (medium-confidence framing) | ≥ 40% |
-| Bug regression rate (merged PRs causing new bugs in 30 days) | < 10% | **< 5%** |
-| Mean time scan-start → PR opened | < 20 min | < 15 min |
-| Confidence calibration accuracy (high-conf PRs that are correct) | N/A (no high-conf in v1.0) | ≥ 90% |
-| Demo quality (UI polish, animations) | Awwwards-tier | Maintained |
-| Public OSS PRs merged during demo phase | ≥ 3 | ≥ 6 total |
-| Loom demo length | < 3 min | < 4 min (covers calibration story) |
+| Metric | v1.0 target | v1.5 target | v2 target |
+| --- | --- | --- | --- |
+| PR acceptance rate on real public repos | ≥ 25% (medium-confidence framing) | ≥ 40% | ≥ 40% maintained across **polyglot** repos (TS/Py/Go/Rust) |
+| Bug regression rate (merged PRs causing new bugs in 30 days) | < 10% | **< 5%** | < 5% maintained; measured continuously via the eval bench (F19) |
+| Mean time scan-start → PR opened | < 20 min | < 15 min | < 15 min (per package in a monorepo) |
+| Confidence calibration accuracy (high-conf PRs that are correct) | N/A (no high-conf in v1.0) | ≥ 90% | ≥ 90%, **proven by the committed eval-bench baseline**; no calibration regression release-over-release |
+| Auto-merge precision (auto-merged PRs that are correct) | N/A | N/A | ≥ 98% (F24 — narrow envelope, opt-in) |
+| Demo quality (UI polish, animations) | Awwwards-tier | Maintained | Maintained (one new "watching" mascot pose; reuse otherwise) |
+| Public OSS PRs merged during demo phase | ≥ 3 | ≥ 6 total | ≥ 9 total (≥ 3 more on harder/polyglot repos) |
+| Loom demo length | < 3 min | < 4 min (covers calibration story) | < 5 min (polyglot + monorepo + auto-merge + monitor + MCP) |
 
 ## 9. User Flows
 
@@ -287,17 +301,35 @@ User-configurable threshold for auto-PR vs. Draft.
 - Cache key: `pnpm-lock.yaml` hash + Node version + OS
 - Skip Phase A install if cache hit; massively faster repeated scans
 
-## 12. Features — v2 (Roadmap, post v1.5)
+## 12. Features — v2 (Local-first; cloud is v3)
 
-- Continuous monitoring (cron-triggered scans)
-- Multi-language: Python, Go, Rust
-- Monorepo / workspaces support
-- Auto-merge for high-confidence categories
-- "Point at any API" mode
-- MCP server: expose Mendel as a callable agent
-- Multi-tenant cloud deployment with hosted sandbox (E2B, Fly machines)
-- Smoke-test execution (boot the application post-patch)
-- Eval suite against fixture bench
+v2 deepens the engine **on the local machine** — no cloud rearchitecture (that's §12b / v3). Full phased build plan, UI/UX, infra, and verification detail live in **[V2_PLAN.md](http://v2_plan.md/)**; this section is the canonical feature definition + release mapping.
+
+**Sequencing principle (CTO call): measure before expand.** v2.0 ships the measurement layer (eval bench + smoke-test) first, so every later capability is validated against a fixture bench with calibration numbers. Auto-merge cannot ship responsibly without it.
+
+| # | Feature | Release | Notes |
+| --- | --- | --- | --- |
+| **F19** | **Eval Harness + Fixture Bench** | v2.0 | Repeatable bench scoring breaking-change precision/recall + confidence-calibration accuracy. The instrument behind §8's v2 metrics. CLI (`pnpm eval`) + optional read-only `/dev/eval`. |
+| **F20** | **Smoke-Test Execution (Sandbox Phase C)** | v2.0 | After patch, boot the app in the sandbox (`--network=none`) and confirm it comes up. Raises the verification ceiling above "tests pass." Hard prerequisite for F24. |
+| **F21** | **Monorepo / Workspace Support** | v2.1 | Detect workspace root, enumerate member packages, scan per-package, group results under one scan. Lifts the v1.x monorepo rejection. |
+| **F22** | **"Point at any API" Mode** | v2.1 | Point Mendel at a package + version range (no repo, no PR) → breaking-change report. Reuses the signal + scoring pipeline; confidence structurally capped (no verification). New `/inspect` route. |
+| **F23** | **Multi-Language Support** | v2.2 | Language-adapter layer, then **Python → Go → Rust**, each shelling to real ecosystem API-diff tools (griffe / apidiff / cargo-semver-checks) inside per-language sandbox images. Confidence ceilings are language-aware (§17). Sub-phased + benched per language. |
+| **F24** | **Auto-Merge for High-Confidence Categories** | v2.3 | The first time Mendel *acts* instead of *suggests*. Opt-in per repo, default OFF, narrow envelope (patch/minor bumps, no breaking change by **both** signals, tests + smoke pass, confidence ≥ high floor). Governed by the honesty-of-action floor (CLAUDE.md §5c). |
+| **F25** | **Continuous Monitoring** | v2.3 | A local watchlist scanned on schedule by a separate `pnpm monitor` worker (node-cron). Turns Mendel into an autonomous local service. Honest about local-uptime limits. New `/watchlist` route + one new "watching" mascot pose. |
+| **F26** | **MCP Server** | v2.3 | Expose Mendel as a callable agent (`mendel_scan_repo`, `mendel_inspect_api`, …) via `@modelcontextprotocol/sdk` (stdio). Wraps the same gated lib functions — callers can't bypass confidence/draft/auto-merge rules. |
+
+**v2.4 — Ship & Prove:** updated Loom, case study v2 (eval-bench numbers are the headline), published bench baseline + per-release deltas, ≥ 3 more real PRs on harder/polyglot repos.
+
+## 12b. Features — v3 (Cloud, post v2)
+
+Deferred from the original v2 roadmap because they couple Mendel to hosted infrastructure (external accounts + cost). v2 builds **cloud-ready** so v3 is a deployment project, not a rewrite (nullable `tenantId` columns, a `SandboxProvider` interface, out-of-process workers, no SQLite-specific queries).
+
+- Multi-tenant cloud deployment (Vercel)
+- Hosted sandbox behind the v2 `SandboxProvider` interface (E2B, Fly machines, Cloudflare Containers)
+- Proper auth (NextAuth.js + GitHub OAuth, replacing PAT-session)
+- Hosted multi-tenant database
+- Hosted cron/queue for continuous monitoring
+- HTTP/SSE MCP transport, Sentry, distributed cache
 
 ## 13. UX / UI Design Language
 
@@ -419,6 +451,12 @@ This is a vibe-coding project. PM (you) + Claude (me). No human dev pair. Some t
 - All UI, dashboard, mascot, design system
 
 The honest tradeoff: v1.0 is less rigorous on the security and confidence dimensions. The mitigation is product framing — every PR explicitly says "medium confidence — manual review required" and opens as Draft. We're not pretending v1.0 is what v1.5 will be.
+
+**v2 capability honesty (added Rev 5):** v2 extends the honesty floor along two new axes.
+
+- **Language-aware confidence ceilings.** Each language's API-diff analyzer (griffe / apidiff / cargo-semver-checks / tsc) has different fidelity. The reachable confidence bucket is **capped by the analyzer's fidelity** and disclosed in "Not Analyzed" (e.g., "Rust cargo-semver-checks covers public API only; private-item changes not analyzed"). A weaker analyzer cannot produce a "high" bucket. This keeps calibration honest as we go polyglot.
+- **Honesty-of-action floor (the auto-merge gate).** v1.5's honesty rules governed *framing what the agent knows*; v2 adds *acting on what it knows*. The bar to **act** (auto-merge) is strictly higher than the bar to **suggest** (open a PR): opt-in per repo, default OFF, a narrow category allowlist (patch/minor bumps with no breaking change detected by **both** signals, signals agreeing, tests **and** smoke passing, confidence ≥ a high floor), reversible (a cancelable dwell window), fully logged (every eligibility decision incl. every NO reason), and anti-gaming (the agent never relaxes the envelope or inflates its own confidence to qualify a merge). Codified as **CLAUDE.md §5c**.
+- **The eval bench (F19) is the honesty anchor.** A committed baseline report proves the ≥ 90% calibration-accuracy claim with numbers, and a calibration regression release-over-release is a stop-the-line condition. We replace "we think it's calibrated" with "here's the measurement."
 
 ## 17b. Phase D — Design Iteration (new in Rev 4)
 

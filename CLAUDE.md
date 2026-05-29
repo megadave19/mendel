@@ -53,42 +53,47 @@ No persistent memory between sessions. Owner provides context. Don't speculate a
 
 **Phased delivery:**
 
-- **v1.0 (Working Demo)** — SHIPPED 2026-05-20. Changelog-only detection, full-file patching, Docker network-mode sandbox, all PRs open as Drafts. Real Draft PRs landed on `megadave19/mendel-test` (axios + typescript). UI shipped but did not earn the PRD §13 aesthetic brief — three planned screens (S5/S6/S7) never built. See Phase D below.
-- **Phase D (Design Iteration)** — CURRENT. Redesigns visual layer to match PRD §13 (cyberpunk-CRT) and builds S5/S6/S7 as inline states inside S4 + permalink routes. 2–3 weekends. Full scope in PRD §17b and [DESIGN.md](http://DESIGN.md).
-- **v1.5 (Calibrated Confidence)** — PAUSED until Phase D Gate D4 passes. Semantic API diffing, asymmetric confidence scoring, search-replace block patching, iptables network allowlist, rejection learning, broader repo support. +3–4 weekends after Phase D.
+- **v1.0 (Working Demo)** — SHIPPED 2026-05-20. Changelog-only detection, full-file patching, Docker network-mode sandbox, all PRs open as Drafts. Real Draft PRs landed on `megadave19/mendel-test` (axios + typescript).
+- **Phase D (Design Iteration)** — CLOSED 2026-05-27. Cyberpunk-CRT redesign + S5/S6/S7 inline + permalinks + Bones 2D mascot. Full scope in PRD §17b and [DESIGN.md](http://DESIGN.md).
+- **v1.5 (Calibrated Confidence)** — ENGINEERING COMPLETE 2026-05-28. Semantic diffing, asymmetric scoring, threshold-gated PRs, search-replace patching, iptables allowlist, node_modules cache, rejection learning. Owner-side closeout (Loom, case study, ≥3 more PRs) remains.
+- **v2 (Local capability depth)** — **ACTIVE per [V2_PLAN.md](http://v2_plan.md/).** Stays local (Docker sandbox, PAT-session, SQLite). Features F19–F26: eval bench, smoke-test (Phase C), monorepo, "point at any API", multi-language (Python/Go/Rust), auto-merge, continuous monitoring, MCP server. Sequenced v2.0 → v2.4. **Read V2_PLAN.md before any v2 work**, plus the relevant PRD §12 / TRD §6.4/§8/§9.5/§10 / DESIGN §11b sections.
+- **v3 (Cloud)** — post-v2. Vercel + NextAuth OAuth + multi-tenant Postgres + hosted sandbox (E2B/Fly). PRD §12b / TRD §15. v2 builds cloud-ready (nullable `tenantId`, `SandboxProvider` interface) so v3 is a deployment project, not a rewrite.
 
-Read [**PRD.md**](http://PRD.md) and [**TRD.md**](http://TRD.md) (project root, mirrored in Notion) for full context.
+Read [**PRD.md**](http://PRD.md), [**TRD.md**](http://TRD.md), and [**V2_PLAN.md**](http://v2_plan.md/) (project root, mirrored in Notion) for full context.
 
 **One-line pitches:**
 
 - v1.0: *"Dependabot version-bumps; Mendel ships a working migration patch as a starting point — explicit about needing your review."*
 - v1.5: *"Dependabot tells you a dep is stale; Mendel ships the upgrade with breaking-change patches already applied, scored via dual independent signals, and honest about what it didn't analyze."*
+- v2: *"Now across Python, Go, Rust, and monorepos — measured against an eval bench, and trustworthy enough to merge the safe ones on its own, inside a narrow honest envelope."*
 
 ## 2. Tech Stack — Locked
 
 Do not propose alternatives without strong reason.
 
-| Layer | v1.0 | v1.5 additions |
-| --- | --- | --- |
-| Framework | Next.js 15 (App Router, TS strict) | — |
-| Styling | Tailwind v4 | — |
-| UI base | shadcn/ui | — |
-| Animation | Framer Motion 11 + GSAP 3 | — |
-| 3D | Three.js + React Three Fiber | — |
-| State | Zustand | — |
-| DB | SQLite + Prisma | — |
-| Validation | Zod | — |
-| LLM | `@google/generative-ai` (Gemini 2.0 Flash) | — |
-| GitHub | `octokit` | — |
-| Sandbox | Docker (Node 20 + pnpm), `--network=bridge` / `--network=none` |   • iptables allowlist (Alpine) |
-| Style normalization | `prettier` | — |
-| Semantic diff | — | `typescript` compiler API + `api-extractor` |
-| Tests | Vitest | — |
-| Lint | ESLint + Prettier (+ Tailwind plugin) | — |
-| Logging | Pino | — |
-| Package manager | pnpm |   • npm, yarn detection |
+| Layer | v1.0 | v1.5 additions | v2 additions (local) |
+| --- | --- | --- | --- |
+| Framework | Next.js 15 (App Router, TS strict) | — | — |
+| Styling | Tailwind v4 | — | — |
+| UI base | shadcn/ui | — | — |
+| Animation | Framer Motion 11 + GSAP 3 | — | — |
+| 3D | **Three.js (vanilla)** — R3F dropped (broke on React 19) | — | — |
+| State | Zustand | — | — |
+| DB | SQLite + Prisma | — | + new models, all with nullable `tenantId` (v3-ready) |
+| Validation | Zod | — | — |
+| LLM | `@google/generative-ai` (Gemini) + `github-models` provider | — | — |
+| GitHub | `octokit` | — | + `mergePullRequest` (auto-merge) |
+| Sandbox | Docker (Node 20 + pnpm), `--network=bridge` / `--network=none` | • iptables allowlist + node_modules cache | • **Phase C smoke-test**; • **`SandboxProvider` interface**; • **per-language images** (`python:3.13-slim`, `golang:1.x`, `rust:1.x-slim`) |
+| Style normalization | `prettier` | — | — |
+| Semantic diff | — | `typescript` compiler API | • per-language: **`griffe`** (Py), **`golang.org/x/exp/cmd/apidiff`** (Go), **`cargo-semver-checks`** (Rust) — run inside sandbox |
+| Tests | Vitest | — | + eval bench (`pnpm eval`); + Mocha/AVA detection |
+| Scheduler | — | — | **`node-cron`** (continuous-monitoring worker, `pnpm monitor`) |
+| Agent interop | — | — | **`@modelcontextprotocol/sdk`** (MCP stdio server, `pnpm mcp`) |
+| Lint | ESLint + Prettier (+ Tailwind plugin) | — | — |
+| Logging | Pino | — | + revived `AgentLog` per-phase timing/tokens |
+| Package manager | pnpm | • npm, yarn detection | • pip/poetry/uv, go mod, cargo (per language) |
 
-Requirements: Node 20+, pnpm 9+, Docker Desktop, Git, `ENCRYPTION_KEY` ≥ 32 chars.
+Requirements: Node 20+, pnpm 9+, Docker Desktop, Git, `ENCRYPTION_KEY` ≥ 32 chars. **v2 also pulls per-language Docker base images on first use.**
 
 ## 3. File Structure
 
@@ -126,14 +131,29 @@ mendel/
 │   │   ├── patching/
 │   │   │   ├── full-file.ts   # v1.0
 │   │   │   └── search-replace.ts # v1.5
+│   │   ├── lang/              # v2 — LanguageAdapter: typescript|python|go|rust + registry
+│   │   ├── workspace/         # v2 — monorepo detect + per-package enumeration (F21)
+│   │   ├── automerge/         # v2 — auto-merge policy (F24, pure evaluateAutoMerge)
+│   │   ├── learning/          # v1.5 — rejection recorder/recall/embedding/pr-state-poller
 │   │   └── runner.ts          # orchestrator
+│   ├── eval/                  # v2 — eval harness + scoring (F19; `pnpm eval`)
 │   ├── github/                # octokit wrapper
-│   ├── llm/                   # Gemini wrapper, retry, token tracking
+│   ├── llm/                   # Gemini/github-models wrapper, retry, token tracking
 │   ├── sandbox/
-│   │   ├── network-modes.ts   # v1.0
-│   │   └── iptables-allowlist.ts # v1.5
+│   │   ├── provider.ts        # v2 — SandboxProvider interface (cloud-ready seam)
+│   │   ├── executor.ts        # two-phase + Phase C runner (local Docker impl)
+│   │   ├── iptables-allowlist.ts # v1.5
+│   │   ├── cache.ts / cache-eviction.ts # v1.5
+│   │   └── smoke.ts           # v2 — Phase C boot test (F20)
 │   ├── db/                    # Prisma client, helpers
 │   └── utils/
+├── worker/
+│   └── monitor.ts             # v2 — node-cron continuous-monitoring worker (F25; `pnpm monitor`)
+├── mcp/
+│   └── server.ts              # v2 — MCP stdio server (F26; `pnpm mcp`)
+├── eval/
+│   ├── fixtures/              # v2 — bench cases (known-correct expected outcomes)
+│   └── reports/               # v2 — bench output; committed baseline is the honesty anchor
 ├── prisma/schema.prisma
 ├── workspace/                 # gitignored; cloned repos
 ├── logs/                      # gitignored; Pino output
@@ -189,7 +209,7 @@ Per the project's Security-First Vibe Coding Rules:
     - Always set max output tokens
     - LLM API key server-side only
     - Validate LLM output via Zod; retry up to 3 times with format-error feedback
-    - Token cap per scan: 250k (v1.0), 500k (v1.5). Per issue: 60k (v1.0), 100k (v1.5).
+    - Token cap per scan: 250k (v1.0), 500k (v1.5/v2). Per issue: 60k (v1.0), 100k (v1.5/v2).
 11. **Sandbox** [v1.0]:
     - Phase A: `docker run --network=bridge`, non-root, 3-min timeout, 2GB cap
     - Phase B: `docker run --network=none`, non-root, 5-min timeout, 2GB cap
@@ -198,6 +218,9 @@ Per the project's Security-First Vibe Coding Rules:
 13. File operations: sandboxed to `./workspace` and `./logs`. Reject `..` or absolute paths escaping these.
 14. No raw SQL. Prisma only.
 15. `pnpm audit` clean on every install.
+16. **Sandbox** [v2 — Phase C smoke-test]: booting untrusted OSS code is the highest-risk op → Phase C runs **`--network=none`** (never granted egress — if an app can't boot offline, that's reported honestly, not by opening the network), non-root, ≤90s timeout, 2GB cap, mandatory teardown. **Every per-language image gets a real-container egress test (§11b.1) before use.**
+17. **Workers & MCP** [v2]: the `worker/monitor.ts` and `mcp/server.ts` processes are security boundaries like API routes — Zod-validate all inputs, Prisma-only, encrypted-PAT-only, never log/return secrets. MCP tool inputs are validated and carry all gating (a caller cannot bypass confidence/draft/auto-merge rules). Eval (CLI) and MCP (stdio) are **never** exposed as unauthenticated HTTP endpoints.
+18. **Child processes** [v2]: use `execFile` (args-as-array), not shell, for new child-process calls — no shell = no injection surface. Shell (`sh -c`) only where genuinely required (the existing sandbox install command), kept isolated.
 
 ## 5b. Hard Rules — Confidence Framing (Non-negotiable)
 
@@ -221,7 +244,26 @@ The product's ethical floor is honest framing of what the agent knows.
 6. Confidence calibration must be honest. Don't inflate to ship more PRs.
 7. Verification failure caps overall confidence at 50 ("low" bucket).
 
+**v2 rules** (multi-language framing):
+
+1. **Confidence ceilings are language-aware.** Each analyzer's fidelity caps the reachable bucket (tsc `dts` can reach high; `cargo-semver` public-API-only cannot alone). The cap is applied after scoring and disclosed in "Not Analyzed." A weaker analyzer NEVER produces an inflated bucket.
+2. **The eval bench (F19) is the honesty anchor.** The ≥90% calibration-accuracy claim must be backed by the committed baseline report. A calibration regression release-over-release is stop-the-line.
+
 If you find yourself looking for a way around any of these: stop, write `STATE.md` note, surface to owner.
+
+## 5c. Hard Rules — Honesty-of-Action Floor (Non-negotiable, v2/F24)
+
+§5b governs *framing what the agent knows*. §5c governs *acting on what it knows* — the auto-merge gate. **The bar to ACT is strictly higher than the bar to SUGGEST.** Auto-merge may fire ONLY when ALL hold (every NO reason is logged to `AgentLog` — no silent action, no silent skip):
+
+1. **Opt-in, default OFF.** Per-repo `RepoSetting.autoMergeEnabled` defaults `false` at the schema level. AND the PAT must have merge rights on that repo.
+2. **Narrow category allowlist.** Patch/minor version bump, **no** breaking change detected by **both** signals, signals **agree**.
+3. **High confidence floor.** `overall` ≥ floor (default **90**), hard-clamped ≥ the standard threshold (a misconfigured low threshold can't unlock auto-merge).
+4. **Tests AND smoke pass.** Phase B green AND Phase C booted (F20 is a hard dependency — never auto-merge without a successful smoke).
+5. **No rejection history.** A prior `RejectionPattern` for this dep/category disqualifies it.
+6. **Reversible.** Respect a cancelable dwell window before the merge lands.
+7. **Anti-gaming.** The agent NEVER relaxes the envelope or inflates its own confidence to qualify a merge (mirrors §5b rule 6).
+
+**Never auto-merge on:** any detected breaking change, signal disagreement, failed/absent smoke, score below floor, a dep with rejection history, or a repo where the PAT lacks merge rights — *regardless of user settings.* If you find yourself looking for a way around any of these: stop, write `STATE.md` note, surface to owner.
 
 ## 6. UI/UX Rules — Design Language
 
@@ -344,6 +386,8 @@ This is a vibe-coded project. The single biggest risk is plausible-looking code 
 | **Integration tests** | Vitest with fixtures | After each agent phase | Phase-level correctness with real fixture data |
 | **E2E smoke tests** | Playwright headless | After every feature; mandatory at phase gates | Wired-up flows, button-to-action paths, UI regressions |
 | **Manual click-through** | Human (you) | At every phase gate | Visual polish, animation correctness, UX feel |
+| **Real-container tests** [v1.5+] | `pnpm test:docker` (gated `DOCKER_INTEGRATION=1`) | After any sandbox/Docker change; per new image | Docker hallucination (flags, network modes, entrypoint, egress) — the §11b.1 class of bugs |
+| **Eval bench** [v2] | `pnpm eval` (F19) | Every release; after any signal/scoring/language change | **Calibration regression** — the agent's own regression net. A drop vs. the committed baseline is stop-the-line. |
 
 **Coverage targets:**
 
@@ -351,6 +395,9 @@ This is a vibe-coded project. The single biggest risk is plausible-looking code 
 - Zod schemas: 100% (cheap to test, high value)
 - E2E smoke: 3 critical user flows covered (connect GitHub → scan repo → open Draft PR)
 - UI components: exempt from unit testing; covered by E2E smoke + manual click-through
+- **[v2] Eval bench:** every new language/signal carries fixture cases; the committed baseline report is the honesty anchor (CLAUDE.md §5b v2 rule 2).
+
+**[v2] The development style is unchanged — same discipline (§7.2 definition-of-working, §7.2a hard rules, §11b real-fixture verification), scaled to v2's new risk surfaces.** New v2 layers: the eval bench (above) and per-language real-container tests (§11b.1). Auto-merge (F24) policy is pure → exhaustive boundary tests; the monitor worker (F25) is tested with a fake clock + injected scan fn; MCP tools (F26) are tested by invoking handlers with valid/invalid inputs (schema enforcement). Full v2 testing strategy: V2_PLAN.md §9.
 
 ### 7.2 Definition of Working (per-feature)
 
@@ -419,6 +466,26 @@ At the end of every phase, dedicate a half-day to integration testing. No new ph
 - Loom recording shipped
 - 3 real Draft PRs opened on real public repos and merged into demo dashboard
 - Smoke test added for: "full user journey from landing → scan → PR"
+
+**v2 Phase Gates (half-day each — same rule: no next release starts until the gate passes).** Full checklists in V2_PLAN.md; the binding minimums:
+
+**v2.0 Gate** (Measure & Verify — F19 eval bench, F20 smoke-test):
+- `pnpm eval` runs green vs. the committed v1.5 baseline; calibration report renders.
+- Phase C boots a real fixture app (success) AND correctly reports a crash fixture (failure) — verified in a **real container** (§11b.1).
+- `SandboxProvider` refactor passes the full v1.5 suite unchanged (no behavior drift).
+- `pnpm typecheck && pnpm lint && pnpm test && pnpm smoke && pnpm test:docker` all green.
+
+**v2.1 Gate** (Broader Repos — F21 monorepo, F22 inspector):
+- A real monorepo fixture scans per-package with grouped UI; install resolves workspace deps in the sandbox (§11b real-fixture).
+- `/inspect` report renders + permalink resolves. Bench + visual baselines updated for new screens.
+
+**v2.2 Gate** (Polyglot — F23, one sub-gate PER LANGUAGE):
+- For Python, then Go, then Rust: a real public fixture repo of that language scans end-to-end (detect→diff→patch→verify→smoke); bench cases added; the new sandbox image passes a **real-container egress test** (§11b.1). A language is not "done" until its sub-gate passes (or the owner explicitly descopes it via the §7.2a deviation protocol).
+
+**v2.3 Gate** (Autonomy — F24 auto-merge, F25 monitor, F26 MCP):
+- Auto-merge fires ONLY inside the §5c envelope on fixtures (an eligible clean bump merges; an injected breaking change does NOT) — asserted by boundary tests.
+- The monitor worker runs a scheduled scan headless end-to-end (fake-clock unit + one real run-to-history).
+- MCP tools are callable + schema-enforced. No calibration regression on the bench. New visual baselines committed.
 
 ### 7.4 Smoke Test Script (`pnpm smoke`)
 
@@ -598,6 +665,19 @@ Reject these even if asked:
 - Letting the mascot speak, caption, or explain (reactions only — never chatbot tone)
 - Skipping the `frontend-design` skill load or [DESIGN.md](http://DESIGN.md) read at the start of a UI session
 
+**v2 additions (Rev: V2_PLAN):**
+
+- **Auto-merging anything outside the §5c envelope** — any detected breaking change, signal disagreement, failed/absent smoke, score below the high floor, a dep with rejection history, or a non-opted-in repo. Default-OFF must be enforced at the schema level.
+- **Auto-merging without a successful Phase C smoke** (F20 is a hard dependency of F24).
+- **Inflating confidence or relaxing the auto-merge envelope to qualify a merge** (anti-gaming, mirrors §5b).
+- **Exposing the eval harness or MCP server as an unauthenticated HTTP endpoint** (eval = CLI, MCP = stdio).
+- **Producing a "high" confidence bucket from a weaker-fidelity language analyzer** (ceilings are language-aware, §5b v2 rule 1).
+- **Reverting the S4 dep graph to decorative-only 3D**, or shipping any decorative-only data viz on a primary screen (§7.2a step 5 still binds).
+- **Adding a second mascot pose beyond "watching" in v2**, or duplicating/speaking the mascot (DESIGN §8).
+- **Reintroducing R3F** — 3D is vanilla Three.js (DESIGN §9 Rev 2).
+- **Building a v3/cloud feature during v2** (multi-tenant, OAuth, hosted sandbox) — if it creeps in, stop and write a `STATE.md` note. Build cloud-*ready*, not cloud.
+- Running `pnpm build` while the dev/preview server shares `.next` (corrupts vendor chunks — clear `.next` + restart).
+
 ## 11b. Known Tricky Areas (Vibe-Coding Warnings)
 
 Dev review flagged four areas where LLMs commonly hallucinate plausible-looking but broken code. These need explicit care: write the code, then *manually verify against a real fixture* before declaring done. Don't trust that it works because it looks right.
@@ -614,6 +694,12 @@ Dev review flagged four areas where LLMs commonly hallucinate plausible-looking 
 - Verify timeout enforcement: deliberately create a fixture that hangs and confirm 5-min timeout kills it
 - Verify memory cap: deliberately allocate > 2GB in a test container and confirm OOM kill
 - Test on macOS and Linux at minimum. Windows Docker Desktop has known networking quirks; document any issues but don't block v1.0 on it.
+
+**[v2] Reinforcement — this is the single most-bitten area (the `$?`-host-expansion bug, the entrypoint-privilege bug, the IPv4 regex bug all shipped past typecheck/lint).** Mandatory before trusting any v2 sandbox change:
+- **Phase C (smoke):** a real-container test must assert BOTH a boot-success fixture and a boot-crash fixture; confirm Phase C runs `--network=none` (an app trying egress is blocked, not granted).
+- **Every per-language image** (`python`, `golang`, `rust`): a real-container egress test (allowed host → 200, blocked host → no response) before the image is used in a real scan, exactly as the node image has. Gated behind `pnpm test:docker`.
+- **Monorepo install:** verify workspace deps actually resolve inside the container (a classic place for pm/Docker hallucination).
+- "It compiles and looks right" is NOT evidence for Docker code. Run the real container.
 
 ### 11b.2 AST Parsing with @typescript-eslint/parser
 
@@ -693,6 +779,8 @@ If something isn't working after 3 attempts:
 ---
 
 ## Revisions
+
+**Rev 5 (2026-05-28)** — v2 development cycle (local-first; cloud → v3). Companion: new [V2_PLAN.md](http://v2_plan.md/) (full phased blueprint for F19–F26). §1 phase status updated (v1.5 engineering complete, **v2 active**, v3 = cloud). §2 stack table gains a v2 column (per-language sandbox images + `griffe`/`apidiff`/`cargo-semver-checks`, `node-cron`, `@modelcontextprotocol/sdk`; R3F officially dropped for vanilla Three.js). §3 file structure adds `lib/agent/lang|workspace|automerge`, `lib/eval`, `lib/sandbox/provider.ts|smoke.ts`, `worker/`, `mcp/`, `eval/`. §5 adds rules 16–18 (Phase C network=none, worker/MCP boundaries, execFile-not-shell). §5b adds v2 rules (language-aware ceilings, eval-bench honesty anchor). **§5c added (NEW): Honesty-of-Action floor** gating auto-merge — non-negotiable. **§7 Testing extended for v2** (same development style, scaled): §7.1 adds eval-bench + real-container test layers; §7.3 adds v2.0–v2.3 phase gates (incl. per-language sub-gates); §11b.1 adds the v2 Docker reinforcement. §11 Forbidden Patterns extended with v2 additions (auto-merge envelope, no decorative viz, no R3F, no v3-during-v2, build-cache hygiene). Companion spec edits: PRD Rev 5 (§12→F19–F26 + §12b v3), TRD Rev 4 (§6.4 per-language, §8.5–8.7, §9.5 auto-merge, §10 new models, §11 routes, §15 v2/v3 split, §17 table), DESIGN Rev 2 (§7 5th lane, §8 "watching" pose, §9 vanilla-Three reconcile, §11b v2 briefs, §12 LangBadge/SmokeResultPanel).
 
 **Rev 4 (2026-05-20)** — Phase D Design Iteration inserted. v1.0 shipped functionally; UI did not earn PRD §13 brief; three screens (S5/S6/S7) never built. §1 updated with current phase status. §3 file structure updated for hybrid route architecture (9 screens → 6 routes). §6 Skills subsection updated to warn against `/website-builder-setup` skill for primary UI. §6b added (Phase D workflow rules + anti-patterns). §9 Definition of Done adds Phase D criteria. §11 Forbidden Patterns extended with Phase D additions. §14 Reference adds [DESIGN.md](http://DESIGN.md). TRD unchanged (Phase D is frontend-only). Companion docs: PRD Rev 4, [DESIGN.md](http://DESIGN.md) Rev 1 (new doc).
 

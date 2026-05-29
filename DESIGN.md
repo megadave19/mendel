@@ -2,10 +2,12 @@
 
 # [DESIGN.md](http://design.md/) — Mendel Design System
 
-> **Revision 1** | Last updated 2026-05-20 | **Status: Active**
+> **Revision 2** | Last updated 2026-05-28 | **Status: Active**
 > 
 > 
-> Sibling document to [PRD.md](http://prd.md/), [TRD.md](http://trd.md/), [CLAUDE.md](http://claude.md/). Source of truth for all visual, motion, and component design decisions.
+> Sibling document to [PRD.md](http://prd.md/), [TRD.md](http://trd.md/), [CLAUDE.md](http://claude.md/), [V2_PLAN.md](http://v2_plan.md/). Source of truth for all visual, motion, and component design decisions.
+> 
+> **Rev 2 (2026-05-28)** — v2 design additions. The design system is **locked**; v2 extends, never reinvents. Changes: §7 StageLane gains a **5th lane (SMOKE)**; §8 adds **one** new mascot pose, **"watching"** (continuous monitoring); §9 reconciled to **vanilla Three.js** (R3F broke on React 19); §11 adds per-screen briefs for **/inspect, /watchlist**, the **auto-merge & MCP Settings panels**, and the dev-only **/dev/eval**; §12 adds **`<LangBadge>`** + the **smoke sub-panel**. Every other v2 surface reuses existing components. Anti-references (§13) bind unchanged.
 > 
 
 ---
@@ -173,7 +175,7 @@ Refined from PRD §13. Hex unchanged; **semantic roles tightened.**
 
 | Beat | Spec |
 | --- | --- |
-| Stage transition (issue moves SCAN→DIAGNOSE→PATCH→VERIFY) | Pill slides between lanes, 280ms `cubic-bezier(0.65, 0, 0.35, 1)` |
+| Stage transition (issue moves SCAN→DIAGNOSE→PATCH→VERIFY→SMOKE) | Pill slides between lanes, 280ms `cubic-bezier(0.65, 0, 0.35, 1)`. **[v2]** The 5th lane (SMOKE, F20) is data-driven — the StageLane already renders a configurable lane set, so this is a config change, not a layout rewrite. |
 | Status LED pulse | 2s loop, glow opacity 0.4→0.8→0.4, ease-in-out |
 | Particle stream | Continuous, 60fps target, opacity 0.3–0.6, slight motion blur. Density tied to active workload. |
 | Mascot pose change | 180ms snap, no easing (mechanical, not animated-bounce) |
@@ -211,6 +213,7 @@ Respect `prefers-reduced-motion`. Boot becomes instant fade-in. Running motion d
 | State | Mascot behavior | Trigger |
 | --- | --- | --- |
 | Idle | Slow float-bob, blinks every 4–6s, occasional yawn or scratch | No active scan |
+| **Watching (v2)** | Idle variant — holds a small radar/scope, slow horizontal sweep; passive vigilance, not active work | Continuous monitoring active (F25). The **one** new pose in all of v2. |
 | Scanning | Holds magnifying glass, head tracks left-right | Scan started |
 | Thinking | Tilts head, taps temple, eye glow shifts cyan | Diagnosis running |
 | Detecting | Eyes widen, head snap to attention | Issue found |
@@ -237,7 +240,11 @@ Sparing, but real. Three places:
 
 3D is **never** decorative chrome. If a 3D element doesn't carry meaning (showing the machine's work, the mascot's life, the repo's structure), it doesn't ship.
 
-**Tooling note:** the `website-builder-setup` skill the user mentioned bundles 21st.dev components and a preset library. Those presets will pull Mendel back toward generic SaaS — **do not use them for primary components.** Framer Motion (already in stack) and the `frontend-design` skill are the right tools. R3F handles 3D.
+**Tooling note:** the `website-builder-setup` skill the user mentioned bundles 21st.dev components and a preset library. Those presets will pull Mendel back toward generic SaaS — **do not use them for primary components.** Framer Motion (already in stack) and the `frontend-design` skill are the right tools.
+
+**[Rev 2 reconciliation — supersedes the "R3F" wording above]:**
+- **3D uses vanilla Three.js, not R3F.** `@react-three/fiber` v8 targets React 18 and breaks under this project's React 19 (discovered in Phase D / D2); `three` is React-agnostic and works. v2 **codifies vanilla Three.js** — an R3F v9 migration is pure risk with no user benefit. Where §9 above says "R3F," read "vanilla Three.js."
+- **The S4 dependency graph is the functional 2D `<DepGraph>`, not a decorative 3D object.** Phase D / D4 replaced the decorative wireframe icosahedrons with a real, interactive 2D graph (real dep nodes, color-coded by state, hover tooltips, filter chips, click-to-expand the matching issue card) per the new CLAUDE.md §7.2a step 5 ("no decorative-only data viz on primary screens"). v2 extends it (F21 package clustering, F23 language-aware tooltips) — never reverts to decoration. The S1 hero 3D moment (item 1 above) remains the place for purely-atmospheric 3D.
 
 ---
 
@@ -355,6 +362,45 @@ Each brief is the minimum spec. Detailed component-level specs come in iteration
 - **Layout:** Sections as bordered panels. PAT section at top with status pill (ACTIVE/REVOKED), token input, save/revoke buttons. About panel below (current implementation is fine — keep). Add toggles section: reduce-motion, mascot, sound (v1.5).
 - **Motion:** Minimal. Save button success state (200ms lime fill from left to right, then settle).
 - **Routes:** `/settings`
+- **[v2] Adds three panels** (same bordered-PanelFrame chrome, no new template): **Auto-Merge** (per-repo list, toggles default-OFF + visibly so, a loud honest disclosure of the §5c envelope — this is the trust surface, treat it like the v1.0 confidence banner); **Sandbox/Language** (read-only: which languages + analyzers are available); **MCP Server** (status + a copyable client-config snippet — copy buttons must work, §7.2a). All rest mode, no mascot.
+
+---
+
+## 11b. Per-Screen Briefs — v2 (Rev 2)
+
+New surfaces obey the existing 3-mode map and anti-references. **Reuse before build** is the rule — these compose existing components.
+
+### S10 — API Inspector ("Point at any API", F22)
+
+- **Purpose:** paste a package + version range → breaking-change report. No repo, no PR.
+- **Mode:** Rest, with a brief running flourish during the ~1–2s analysis.
+- **Layout:** input row (package name + from/to version, npm autocomplete). Result reuses `<IssueCard context="rest">` + `<NotAnalyzedCallout>` + `<DiffViewer>` + `<ConfidenceBadge>` **verbatim** — identical visual language to a scan issue, zero new card design.
+- **Motion:** mascot does a short scanning→thinking beat (reused poses), then settles. Not a full S4.
+- **Must-have:** the report is **loud about what it didn't do** ("no repo context — affected-sites skipped; confidence capped at medium"). Confidence is structurally capped — never "high" (analogous to v1.0 amber-only).
+- **Routes:** `/inspect`, permalink `/inspect/[id]`.
+
+### S11 — Watchlist (Continuous Monitoring, F25)
+
+- **Purpose:** manage repos scanned on a schedule by the local monitor worker.
+- **Mode:** Rest (Nixtio-dense — anti-ref: no empty canvas).
+- **Layout:** dense table — repo · schedule (human "every 6h") · last result (status dot + issues) · next run (relative, tabular-nums) · enable toggle · auto-merge indicator. Header reuses `<StatCard>` row + dashboard table styling. Add/edit row = cron-or-preset picker.
+- **Mascot:** the new **"watching" pose** (§8) in the monitoring-active state. One instance only.
+- **Motion:** rest-mode idle life; the watching sweep is a slow idle loop (reduced-motion → static); countdowns use number-flicker-on-update (§7).
+- **Must-have:** honest scheduling disclosure — "runs only while your machine + the monitor process are up" (no false always-on promise; that's v3).
+- **Routes:** `/watchlist`. Dashboard (S8) also gains a small "Monitoring" strip (repos watched, next-scan countdown, recent autonomous activity).
+
+### S12 — Eval Report (F19, dev-only)
+
+- **Purpose:** render the latest eval-bench report — the portfolio's strongest data artifact.
+- **Mode:** Rest. **Dev-only** (`/dev/eval`), not in the authed app nav.
+- **Layout:** Nixtio stat cards (precision/recall, calibration accuracy) + a calibration scatter (predicted bucket vs. actual correctness) via the existing sparkline/Framer technique. Reuses `<StatCard>` + `<PanelFrame>`. No mascot (dev surface).
+- **Must-have:** genuinely-wired real data (§7.2a step 5) — not decoration.
+
+### v2 changes to existing screens (no new routes)
+
+- **S4 (Live Console):** StageLane 5th lane (SMOKE); issue cards gain a `<LangBadge>` + a `pkg:` chip (monorepo); the smoke result renders as a sub-panel in the expanded card; auto-merge adds an "AUTO-MERGED ✓" terminal state (phosphor + merge SHA) and a cancelable "auto-merge pending (Xs)" amber state with a **working** cancel control (§7.2a). `<DepGraph>` gains package clustering + language-aware tooltips.
+- **S8 (Dashboard):** new "Auto-Merged" stat card; CalibrationSnapshot gains an auto-merge slice; the Monitoring strip.
+- **S3 (New Scan):** after URL parse, an honest detected-context line (language · analyzer · "monorepo: N packages") in the constraints area.
 
 ---
 
@@ -378,6 +424,15 @@ Components to build for Phase D. Each gets its own spec file under `/components/
 | `<CommandBar>` | F-key hint bar at bottom of S4. |
 | `<ScanlineOverlay>` | Page-level subtle scanline drift. |
 | `<BootSequence>` | S1-only choreography orchestrator. |
+
+**[v2] New components (everything else reuses the above):**
+
+| Component | Used in |
+| --- | --- |
+| `<LangBadge>` | Tiny mono label chip — TS / PY / GO / RS. Uses existing cyan-chrome accent + `label` type token; **no new colors**. On issue cards, S4 left pane, dashboard rows. |
+| `<SmokeResultPanel>` | Bordered sub-panel inside the issue card's expanded body (under Verification Results). Phosphor when booted, amber when not-attempted/inconclusive, danger when crashed; wraps a `<TerminalLog context="rest">` for the `logTail`. Honest: never a fake green. |
+
+Everything F22/F24/F25/F26 needs beyond these is a **composition of existing components** (PanelFrame, StatCard, StatusPill, IssueCard, ConfidenceBadge, DepGraph, table chrome). Each new component + changed screen gets a `/dev/[component]` isolation pass before integration (CLAUDE.md §6b).
 
 ### 12.1 Dual-mode behavior (added 2026-05-20 — Phase D readiness review)
 

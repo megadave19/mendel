@@ -9,6 +9,16 @@
 
 ## 0. Revisions Log
 
+**Rev 4 (2026-05-28)** — v2 technical specs (local-first; cloud is v3). Companion: [V2_PLAN.md](http://v2_plan.md/) (full phased build plan). Changes:
+
+- **§6.4** — semantic API diffing extended with a **per-language strategy table** (TS=tsc, Python=griffe, Go=apidiff, Rust=cargo-semver-checks); `analysisTier` enum extended.
+- **§8** — added **§8.5 Phase C (smoke-test execution)**, **§8.6 `SandboxProvider` interface** (cloud-readiness seam), **§8.7 per-language sandbox images + v2 cache key**.
+- **§9.5** — added **auto-merge eligibility** computation + **language-aware confidence ceilings**.
+- **§10** — new models `ScanPackage`, `Inspection`, `RepoSetting`, `WatchlistEntry`, `Notification`; revived `AgentLog`; new `Scan`/`Issue` columns; **nullable `tenantId` on every new model** (v3 cloud-readiness).
+- **§11** — new routes (`/api/inspect`, `/api/watchlist`, `/api/repos/settings`); MCP (stdio) + eval (CLI) deliberately non-HTTP.
+- **§15** — split into **v2 (local: workers + per-language Docker)** vs **v3 (cloud)**.
+- **§17** — v2 roadmap column filled to match the plan.
+
 **Rev 3 (2026-05-18)** — second CTO-review pass + capability honesty pass. Split v1 into v1.0 and v1.5. Every Rev 2 feature still lands; just batched.
 
 - **v1.0 sandbox simplification**: Docker network modes (`--network=bridge` for Phase A, `--network=none` for Phase B) instead of iptables-level allowlist. Iptables tier moves to v1.5.
@@ -236,11 +246,22 @@ z.object({
   affectedSitesInRepo: z.array(z.object({ symbol: z.string(), files: z.array(z.string()) })),
   coveragePercent: z.number().min(0).max(100),
   unanalyzableSymbols: z.array(z.object({ symbol: z.string(), reason: z.string() })),
-  analysisTier: z.enum(['dts', 'api-extractor', 'ast-only']),
+  analysisTier: z.enum(['dts', 'api-extractor', 'ast-only', 'griffe', 'apidiff', 'cargo-semver']),
 })
 ```
 
 The `analysisTier` field feeds directly into confidence calculation — `ast-only` deserves lower confidence than `dts`.
+
+**[v2] Per-language semantic-diff strategy.** There is no universal API differ — each language uses its own mature, shell-invokable ecosystem tool, run inside that language's sandbox image. Each adapter **normalizes its tool's output into the schema above** (same shape; only `analysisTier` varies), so the confidence engine + UI stay language-agnostic.
+
+| Language | API-diff tool (`analysisTier`) | Sandbox base | Notes |
+| --- | --- | --- | --- |
+| TypeScript | tsc compiler API (`dts`) / declaration-emit for JS+JSDoc (`api-extractor`) / AST (`ast-only`) | `node:20` | Existing v1.5 pipeline. |
+| Python | **`griffe check`** (`griffe`) | `python:3.13-slim` | Real tool; detects API breaking changes between versions. Pip/poetry/uv. |
+| Go | **`golang.org/x/exp/cmd/apidiff`** (`apidiff`) | `golang:1.x` | Real tool; API compatibility report. Go modules. |
+| Rust | **`cargo-semver-checks`** / `cargo-public-api` (`cargo-semver`) | `rust:1.x-slim` | Real tools; semver-aware public-API diff. Cargo. |
+
+The **changelog signal (Signal A) is already language-agnostic** (it fetches CHANGELOG/releases), so it is reused unchanged across languages. Analyzer fidelity differs per language → confidence ceilings are language-aware (§9.5).
 
 ## 7. Patch Generation
 
@@ -325,6 +346,37 @@ Hybrid:
 | Phase A blocked by network policy (v1.5) | Capture blocked host; offer tier-2 opt-in |
 | Phase B fails | Surface failure logs per layer; agent triggers REPLAN (max 3 attempts) |
 | Either phase OOM | Notify user; reject scan |
+
+### 8.5 v2 — Phase C: Smoke-Test Execution [F20]
+
+After Phase B passes, optionally **boot the project** in the sandbox to confirm it still comes up post-patch. Raises the verification ceiling above "tests pass" and is a **hard prerequisite for auto-merge (F24)**.
+
+- Detect a boot command (heuristics: `scripts.start` / `scripts.dev` / `main`/`bin` entry / framework signature).
+- Run it with a short timeout (default 90s, capped); watch stdout for a ready/listening signal or a crash; optionally curl `localhost:<port>/` or a detected `/health`.
+- **`--network=none`** (same as Phase B — a booting app shouldn't need egress; if it does, that's reported honestly, not granted). Non-root, 2GB cap, mandatory teardown.
+- `SmokeResult = { attempted, booted, signal, durationMs, logTail, reason }`. Honest by construction: `booted:false` with a reason (or `attempted:false` "no boot command found") is a valid, non-fatal outcome — never a fake green.
+- **Confidence gate:** a failed smoke caps overall confidence like a failed verification does (extends §9.5's verification cap).
+- **§11b.1 mandatory:** real-container test of both boot-success and boot-crash fixtures before trust (Docker hallucination has bitten us repeatedly).
+
+### 8.6 v2 — `SandboxProvider` Interface (cloud-readiness seam)
+
+All sandbox calls move behind `lib/sandbox/provider.ts`:
+
+```tsx
+interface SandboxProvider {
+  runInstall(cfg): Promise<PhaseResult>;   // Phase A
+  runTest(cfg): Promise<PhaseResult>;      // Phase B
+  runSmoke(cfg): Promise<SmokeResult>;     // Phase C
+  teardown(handle): Promise<void>;
+}
+```
+
+The local implementation is today's Docker executor (extracted via behavior-snapshot, no drift). **v3 adds an E2B / Fly implementation behind the same interface** — the agent never changes. This is the single most important v3 hook.
+
+### 8.7 v2 — Per-Language Sandbox Images + Cache Key
+
+- Each language (§6.4 table) gets its own image, each following the **same two-phase + Phase C + iptables-allowlist + cache** model. Each new image gets a **real-container egress test** (§11b.1) before use, like the node image has.
+- Cache key extends to `sha256(lockfile + language + image tag + node/runtime version + OS + arch)`; v2's LRU 5GB eviction (existing) applies per-image.
 
 ## 9. PR Submission
 
@@ -471,6 +523,19 @@ type ConfidenceScore = {
 - 40 to threshold → Draft PR with warning
 - < 40 → no auto-PR; surface diagnosis only
 
+**[v2] Language-aware confidence ceilings.** Each analyzer's fidelity caps the reachable bucket. `analysisTier` maps to a max bucket (e.g., a `cargo-semver` public-API-only diff cannot alone reach `high`; tsc `dts` can). The cap is applied AFTER scoring and disclosed in "Not Analyzed." A weaker analyzer never produces an inflated bucket.
+
+**[v2] Auto-merge eligibility [F24].** A pure function `evaluateAutoMerge(context) → { eligible, reasons[] }` that gates the new AUTOMERGE phase. Eligible ONLY if **all** hold (every NO reason is recorded — no silent skip):
+
+1. Repo is opted into auto-merge (`RepoSetting.autoMergeEnabled`, default **false**) AND PAT has merge rights.
+2. Change category ∈ allowlist: **patch/minor bump, no breaking change detected by *both* signals, signals agree.**
+3. `overall` score ≥ high floor (default **90**, hard-clamped ≥ standard threshold).
+4. Phase B (tests) passed **and** Phase C (smoke) booted.
+5. No prior `RejectionPattern` for this dep/category.
+6. Reversible: respects a cancelable dwell window before the merge lands.
+
+Never eligible on: any detected breaking change, signal disagreement, failed/absent smoke, score below floor, or a dep with a rejection history. The engine **never relaxes the envelope or inflates its own score to qualify** (anti-gaming — mirrors §5b). Governed by **CLAUDE.md §5c (honesty-of-action floor)**.
+
 ## 10. Data Model (Prisma)
 
 ```
@@ -526,6 +591,82 @@ model RejectionPattern {
   createdAt       DateTime @default(now())
   embedding       Bytes?   // semantic embedding for similarity lookup
 }
+
+// ── v2 additions ──
+// All new models carry a nullable tenantId (unused locally; populated in v3 cloud — §15).
+
+// [v2] Scan gains: language String?, workspaceKind String?  (both nullable)
+// [v2] Issue gains: language String?, packageDir String?     (both nullable)
+
+// [F21] one row per workspace member package scanned
+model ScanPackage {
+  id          String   @id @default(cuid())
+  scanId      String
+  name        String
+  dir         String
+  depsCount   Int      @default(0)
+  issuesFound Int      @default(0)
+  tenantId    String?
+}
+
+// [F22] "Point at any API" report (no repo, no PR)
+model Inspection {
+  id          String   @id @default(cuid())
+  packageName String
+  fromVersion String
+  toVersion   String
+  language    String?
+  report      String   // JSON-stringified ApiReport
+  createdAt   DateTime @default(now())
+  tenantId    String?
+}
+
+// [F24] per-repo auto-merge opt-in (default OFF)
+model RepoSetting {
+  id               String   @id @default(cuid())
+  repoUrl          String   @unique
+  autoMergeEnabled Boolean  @default(false)
+  autoMergeMaxBump String   @default("minor") // "patch" | "minor"
+  tenantId         String?
+}
+
+// [F25] continuous-monitoring watchlist
+model WatchlistEntry {
+  id         String    @id @default(cuid())
+  repoUrl    String
+  schedule   String    // cron expression
+  enabled    Boolean   @default(true)
+  lastScanAt DateTime?
+  nextScanAt DateTime?
+  tenantId   String?
+}
+
+// [F25] local in-app notifications (autonomous activity feed)
+model Notification {
+  id        String   @id @default(cuid())
+  kind      String   // "issue" | "pr-opened" | "auto-merged" | "scan-failed"
+  body      String
+  scanId    String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  tenantId  String?
+}
+
+// [v2.0] revived from v1.0 (was defined-but-unused, removed in v1.0 Fix #14).
+// Per-phase timing + tokens; auto-merge writes its full eligibility decision here.
+model AgentLog {
+  id         String   @id @default(cuid())
+  scanId     String
+  issueId    String?
+  phase      String   // incl. "SMOKE", "AUTOMERGE"
+  toolName   String?
+  input      String   // JSON-stringified
+  output     String   // JSON-stringified
+  durationMs Int
+  tokensUsed Int?
+  createdAt  DateTime @default(now())
+  tenantId   String?
+}
 ```
 
 ## 11. Internal API Routes
@@ -541,8 +682,13 @@ model RejectionPattern {
 | `/api/issues/:id` | DELETE | Dismiss |
 | `/api/dashboard` | GET | Aggregate stats |
 | `/api/settings` | GET / PATCH | Settings CRUD |
+| `/api/inspect`, `/api/inspect/:id` | POST / GET | [v2/F22] "Point at any API" report; no repo write (10/min) |
+| `/api/watchlist`, `/api/watchlist/:id` | GET/POST/PATCH/DELETE | [v2/F25] continuous-monitoring watchlist CRUD |
+| `/api/repos/settings` | PATCH | [v2/F24] per-repo auto-merge toggle (default OFF) |
 
-All routes: Zod-validated, rate-limited (60/min general, 10/min on `/scans` POST, 5/15min on `/auth`), session-cookie gated.
+All routes: Zod-validated, rate-limited (60/min general, 10/min on `/scans` POST + `/inspect`, 5/15min on `/auth`), session-cookie gated.
+
+**[v2] Deliberately NOT HTTP:** the **eval harness (F19)** is CLI-only (`pnpm eval`) and the **MCP server (F26)** is a stdio process (`pnpm mcp`). Neither is web-exposed — avoids an unauthenticated heavy endpoint. MCP tool inputs are still Zod-validated as boundaries and carry all gating (confidence/draft/auto-merge); MCP responses never leak secrets. The **monitoring worker (F25)** reads the DB directly as a trusted local process (not via HTTP).
 
 ## 12. Security
 
@@ -596,15 +742,29 @@ pnpm dev
 
 Demo: local + Loom + real PR URLs.
 
-### v2 — Cloud Deployment (post v1.5)
+### v2 — Local (post v1.5)
 
-- Hosted sandbox (E2B, [Fly.io](http://Fly.io) machines, Cloudflare Containers)
-- Vercel + Vercel KV
-- Proper auth (NextAuth.js + GitHub OAuth)
-- Multi-tenant data model
+Still local — no cloud. v2 adds **out-of-process workers** alongside the Next.js app:
+
+```bash
+pnpm dev        # web app (as today)
+pnpm monitor    # [F25] node-cron worker — continuous monitoring; shares runScan
+pnpm mcp        # [F26] MCP stdio server — Mendel as a callable agent
+pnpm eval       # [F19] eval bench (CLI; not a server)
+pnpm test:docker  # real-container sandbox tests (per-language images, Phase C)
+```
+
+Per-language Docker images (`node:20`, `python:3.13-slim`, `golang:1.x`, `rust:1.x-slim`) built on first use. Workers and the sandbox sit behind interfaces (`SandboxProvider`, shared `runScan`) so v3 can host them unchanged. Demo: local + Loom + real PR URLs (now polyglot).
+
+### v3 — Cloud Deployment (post v2)
+
+- Hosted sandbox behind the v2 `SandboxProvider` interface (E2B, [Fly.io](http://Fly.io) machines, Cloudflare Containers)
+- Vercel deploy
+- Proper auth (NextAuth.js + GitHub OAuth, replacing PAT-session)
+- Multi-tenant data model (the nullable `tenantId` columns added in v2 populate here)
 - Hosted DB
-- Smoke-test execution layer
-- Rejection-learning embedding pipeline
+- Hosted cron/queue for monitoring; HTTP/SSE MCP transport
+- Sentry, distributed cache
 
 ## 16. Local Dev Setup
 
@@ -616,16 +776,19 @@ Demo: local + Loom + real PR URLs.
 
 ## 17. v1.0 → v1.5 → v2 Roadmap
 
-| Concern | v1.0 | v1.5 | v2 |
-| --- | --- | --- | --- |
-| Detection signals | Changelog only |   • Semantic diff (3-tier pipeline) |   • Smoke test + historical regression |
-| Confidence | "medium — review required" | Calibrated asymmetric scoring |   • Per-dep historical confidence |
-| Patching | Full-file, max 3 files |   • Search-replace blocks, no cap | — |
-| Sandbox | Docker network modes |   • iptables allowlist | Hosted (E2B / Fly) with same model |
-| Caching | None | `node_modules` layered | Distributed |
-| PR mode | All Drafts | Threshold-gated |   • Auto-merge for very high conf |
-| Languages | TS-typed only |   • JS-only with lower confidence |   • Python, Go, Rust |
-| Repos | Single-package | Single-package |   • Monorepos |
-| Test runners | Vitest only |   • Jest |   • Mocha, AVA, others |
-| Package managers | pnpm only |   • npm, yarn | — |
-| Learning | None | Rejection patterns |   • Per-repo, per-maintainer patterns |
+| Concern | v1.0 | v1.5 | v2 (local) | v3 (cloud) |
+| --- | --- | --- | --- | --- |
+| Detection signals | Changelog only | Semantic diff (3-tier) | + **Smoke-test (Phase C)** [F20] | Historical regression |
+| Confidence | "medium — review required" | Calibrated asymmetric scoring | + **Language-aware ceilings**; **eval-bench-proven** [F19] | Per-dep historical confidence |
+| Patching | Full-file, max 3 files | Search-replace blocks, no cap | (unchanged) | — |
+| Sandbox | Docker network modes | iptables allowlist | + **Phase C**, **`SandboxProvider` iface**, **per-language images** | Hosted (E2B / Fly) behind same iface |
+| Caching | None | `node_modules` layered + LRU | per-image cache key | Distributed |
+| PR mode | All Drafts | Threshold-gated | + **Auto-merge** (opt-in, §5c envelope) [F24] | — |
+| Languages | TS-typed only | JS-only lower confidence | + **Python, Go, Rust** [F23] | — |
+| Repos | Single-package | Single-package | + **Monorepos** [F21]; + **"any API" mode** [F22] | — |
+| Test runners | Vitest only | Jest | + Mocha, AVA | — |
+| Package managers | pnpm only | npm, yarn | + pip/poetry, go mod, cargo | — |
+| Learning | None | Rejection patterns | (unchanged) | Per-repo, per-maintainer |
+| Autonomy | None | None | + **Continuous monitoring** [F25]; + **MCP server** [F26] | Hosted cron/queue |
+| Auth | PAT-session | PAT-session | PAT-session | NextAuth + GitHub OAuth |
+| Tenancy | Single-user | Single-user | Single-user (nullable `tenantId` seeded) | Multi-tenant |
