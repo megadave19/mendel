@@ -13,10 +13,11 @@ import {
 
 const execAsync = promisify(exec)
 
-// v1.5 W#8: bumped tag forces a rebuild on existing dev machines so the
-// new iptables-enabled Dockerfile + entrypoint script land cleanly. Existing
-// `mendel-sandbox:latest` from v1.0 stays alongside but is no longer used.
-export const IMAGE_NAME = 'mendel-sandbox:v1.5'
+// Tag bumps force a one-time rebuild on existing dev machines (ensureSandboxImage
+// skips the build when the tag already exists). v1.5 W#8 added iptables; v1.5.1
+// (2026-05-29) adds `yarn` to the image so yarn-lockfile repos can install —
+// without it, every yarn repo failed Phase A with "yarn: not found".
+export const IMAGE_NAME = 'mendel-sandbox:v1.5.1'
 const PHASE_A_TIMEOUT_MS = 3 * 60 * 1000
 const PHASE_B_TIMEOUT_MS = 5 * 60 * 1000
 const MEMORY_CAP = '2g'

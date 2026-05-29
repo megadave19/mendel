@@ -1,7 +1,11 @@
 FROM node:22-alpine
 
-# Install pnpm directly — bypasses corepack version auto-detection
-RUN npm install -g pnpm@9.0.0
+# Install pnpm + yarn directly — bypasses corepack version auto-detection.
+# yarn is REQUIRED: yarn-lockfile repos (e.g. ta-vivo) detect `yarn install`,
+# and without the binary Phase A failed instantly ("yarn: not found") → every
+# yarn repo silently failed verification → confidence capped → no PR. (npm
+# ships with the node base image; pnpm + yarn cover the other two managers.)
+RUN npm install -g pnpm@9.0.0 yarn@1.22.22
 
 # - curl: egress-blocking verification in gate tests
 # - iptables: v1.5 W#8 default-deny allowlist on Phase A (CLAUDE.md §5 Rule 12)

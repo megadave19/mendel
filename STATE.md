@@ -99,6 +99,13 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (sandbox bug — yarn missing from image; every yarn repo failed verification)**
+Scanned `ta-vivo/ta-vivo` (yarn repo): 3 issues found, **0 PRs, all CONF 50/100 LOW "capped by verification failure."** Owner asked why no PRs + why low confidence. Audit:
+- **Root cause:** the sandbox image (`docker/sandbox.Dockerfile`) installed pnpm + base npm but **NOT yarn**. `detect.ts` returns `yarn install` for yarn-lockfile repos → container had no `yarn` binary → Phase A failed instantly ("yarn: not found"). Phase-A failure caps confidence at 50 (§5b) and hard-skips the PR. So **every yarn repo silently failed verification** — systemic, not ta-vivo-specific.
+- **Why "low confidence" is correct here (owner's question):** the 50 is *capped by verification failure*, not a weak analysis — the signals were strong (`dts · 100% coverage · 552 symbols` on @emailjs/browser). High confidence is EARNED by passing verification; Mendel won't inflate an unverifiable patch (§5b). The lever is making verification PASS, not making Mendel "guess higher."
+- **Fix:** Dockerfile `RUN npm install -g pnpm@9.0.0 yarn@1.22.22`; bumped `IMAGE_NAME` → `mendel-sandbox:v1.5.1` so `ensureSandboxImage` rebuilds on next scan (it skips build when the tag exists). + `explainInstallFailure` now recognizes "command not found" (a missing-PM-in-image bug) so this surfaces clearly next time. +1 test.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **312 passed** / 7 gated. **Live re-verify needed:** re-scan ta-vivo (next scan rebuilds the v1.5.1 image with yarn ~30s) → Phase A should now install → if tests pass, confidence can finally be HIGH and (with ack) a PR opens linking #98.
+
 **2026-05-29 (Issue-linking — assist consent, never fabricate it; CLAUDE.md §5c.2)**
 Owner asked: should the agent detect/create issues + do the task autonomously? Answer (after reasoning through it together): **link, don't create.** Creating an issue on a stranger's repo is unsolicited contact = the same spam class that got the account blocked; opening an issue then self-PRing it *games* the "issue first" norm (the norm exists to get a human maintainer's yes — an agent can't fabricate that). So the agent **assists** the dialogue, never **impersonates** consent.
 - **`lib/agent/issue-link.ts`** (pure): `pickIssueForDep` (matches an existing open issue by `dependencies` label / upgrade-intent title / dep mention; dep-specific > general umbrella like ta-vivo #98) + `formatIssueReference` (owned→`Closes #N`, external→`Addresses #N`).

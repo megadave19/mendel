@@ -74,6 +74,12 @@ export function explainInstallFailure(installOutput: string): string | null {
     return 'out of disk space in the sandbox during install.'
   }
 
+  // package manager binary missing in the sandbox image (e.g. a yarn repo when
+  // the image only ships pnpm/npm). This is a Mendel image bug, not the repo's.
+  if (/(yarn|pnpm|npm)\b.*\b(not found|command not found)|(not found|command not found).*\b(yarn|pnpm|npm)\b/i.test(installOutput)) {
+    return "the repo's package manager isn't available in the sandbox image — this is a Mendel sandbox bug (rebuild the image / report it), not a problem with the repo."
+  }
+
   return null
 }
 

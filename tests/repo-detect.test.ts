@@ -240,6 +240,11 @@ npm error Fix the upstream dependency conflict, or retry this command with --for
     expect(explainInstallFailure('npm error nospc ENOSPC: no space left on device')).toMatch(/disk/i)
   })
 
+  it('recognizes a missing package-manager binary (the yarn-not-in-image bug)', () => {
+    expect(explainInstallFailure('/bin/sh: yarn: not found')).toMatch(/sandbox image|Mendel sandbox/i)
+    expect(explainInstallFailure('sh: 1: yarn: command not found')).toMatch(/sandbox image|Mendel sandbox/i)
+  })
+
   it('returns null for unrecognized / empty output (caller logs the raw tail)', () => {
     expect(explainInstallFailure('some unrelated build noise')).toBeNull()
     expect(explainInstallFailure('')).toBeNull()
