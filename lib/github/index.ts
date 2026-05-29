@@ -8,6 +8,7 @@ import type {
   MonorepoDetectionResult,
   OpenPR,
   PullRequestState,
+  RepoIssue,
 } from './types'
 import { GitHubError } from './types'
 
@@ -137,6 +138,48 @@ export async function findOpenPRsByHeadPattern(
       }
     }
     return prs
+  } catch (err) {
+    throw wrapError(err)
+  }
+}
+
+// ─── Open issues (for issue-linking, CLAUDE.md §5c.2) ─────────────────────────
+//
+// Read-only. We link PRs to issues the maintainer ALREADY opened (consent
+// exists); we never create issues on repos we don't own. Excludes PRs (the
+// issues API returns both; a PR has a `pull_request` field).
+
+export async function listOpenIssues(
+  pat: string,
+  owner: string,
+  repo: string,
+  max = 100,
+): Promise<RepoIssue[]> {
+  const client = new Octokit({ auth: pat })
+  try {
+    const out: RepoIssue[] = []
+    for await (const response of client.paginate.iterator(client.rest.issues.listForRepo, {
+      owner,
+      repo,
+      state: 'open',
+      per_page: 100,
+    })) {
+      for (const iss of response.data) {
+        if (iss.pull_request) continue // exclude PRs
+        out.push({
+          number: iss.number,
+          title: iss.title,
+          url: iss.html_url,
+          labels: (iss.labels ?? [])
+            .map((l) => (typeof l === 'string' ? l : (l.name ?? '')))
+            .filter(Boolean),
+          body: (iss.body ?? '').slice(0, 2000),
+        })
+        if (out.length >= max) return out
+      }
+      if (out.length >= max) break
+    }
+    return out
   } catch (err) {
     throw wrapError(err)
   }

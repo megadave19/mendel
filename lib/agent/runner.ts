@@ -2,7 +2,9 @@ import EventEmitter from 'events'
 import path from 'path'
 import { mkdirSync, rmSync, readFileSync } from 'fs'
 import simpleGit from 'simple-git'
-import { cloneRepo, detectMonorepo, getRepoMeta, assessSubmitCapability } from '@/lib/github'
+import { cloneRepo, detectMonorepo, getRepoMeta, assessSubmitCapability, listOpenIssues } from '@/lib/github'
+import { pickIssueForDep, formatIssueReference } from './issue-link'
+import type { RepoIssue } from '@/lib/github/types'
 import { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
 import { parseSemanticDiff, type SemanticDiff } from './signals/semantic-diff'
@@ -236,6 +238,17 @@ export async function runScan(
     log(`Contribution check: ${eligibility.decision.toUpperCase()} — ${eligibility.reason}`)
     if (!ownsRepo && !eligibility.canOpenPRs) {
       log('↳ This scan runs as REPORT-ONLY — diagnosis will be persisted, no PR will be opened.')
+    }
+
+    // §5c.2 — fetch the repo's OPEN issues so a PR can link the maintainer's
+    // existing request (e.g. a "dependencies" good-first-issue). Read-only;
+    // best-effort (failure → PRs simply open without a link). Mendel never
+    // CREATES issues on repos it doesn't own — it links existing consent only.
+    let openIssues: RepoIssue[] = []
+    try {
+      openIssues = await listOpenIssues(pat, owner, repo)
+    } catch (issueErr) {
+      log(`(issue-link) could not list issues (${String(issueErr).slice(0, 80)}) — PRs will open without an issue link`)
     }
 
     log('Checking dependencies...')
@@ -519,6 +532,11 @@ export async function runScan(
         if (!gate.allow) {
           log(`⚠ Skipping PR submission — ${gate.reason}`)
         } else {
+          // §5c.2 — link the PR to an existing maintainer-opened issue if one
+          // matches (consent already exists). Owned → "Closes"; external → "Addresses".
+          const linkedIssue = pickIssueForDep(openIssues, dep.name)
+          const issueReference = linkedIssue ? formatIssueReference(linkedIssue, ownsRepo) : undefined
+          if (linkedIssue) log(`Linking PR to existing issue #${linkedIssue.number}: ${linkedIssue.title}`)
           try {
             const result = await submitDraftPR(
               repoPath,
@@ -534,6 +552,7 @@ export async function runScan(
               log,
               confidenceScore,
               submissionMode,
+              issueReference,
             )
 
             prUrl = result.prUrl

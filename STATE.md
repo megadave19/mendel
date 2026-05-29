@@ -99,6 +99,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (Issue-linking — assist consent, never fabricate it; CLAUDE.md §5c.2)**
+Owner asked: should the agent detect/create issues + do the task autonomously? Answer (after reasoning through it together): **link, don't create.** Creating an issue on a stranger's repo is unsolicited contact = the same spam class that got the account blocked; opening an issue then self-PRing it *games* the "issue first" norm (the norm exists to get a human maintainer's yes — an agent can't fabricate that). So the agent **assists** the dialogue, never **impersonates** consent.
+- **`lib/agent/issue-link.ts`** (pure): `pickIssueForDep` (matches an existing open issue by `dependencies` label / upgrade-intent title / dep mention; dep-specific > general umbrella like ta-vivo #98) + `formatIssueReference` (owned→`Closes #N`, external→`Addresses #N`).
+- **`lib/github.listOpenIssues`** — read-only; excludes PRs. There is deliberately NO external "create issue" path.
+- **Runner:** fetches open issues once (best-effort) after the eligibility gate; per dep, links the PR to a matching issue. **submit.ts** injects the reference at the top of the PR body.
+- **CLAUDE.md §5c.2** added (link-don't-create; never self-PR a self-opened issue on non-owned; owned repos may run the full loop). Principle: *act freely where consent exists (your repos, or a maintainer-opened issue); everywhere else, prepare — never initiate.*
+- +8 tests (`tests/issue-link.test.ts`). typecheck ✅ lint ✅ `pnpm test` ✅ **311 passed** / 7 gated.
+- Recommended live test target (non-owned, genuinely invited): **`ta-vivo/ta-vivo` issue #98** (`help wanted`+`good first issue`+`dependencies`, single-package Vue, no existing Dependabot/Renovate, active). Mendel will now link its PR to #98.
+
 **2026-05-29 (Contribution Eligibility Gate — respect repo norms; CLAUDE.md §5c.1)**
 Triggered by real fallout: the unsolicited automated PRs Mendel opened on `sindresorhus/execa` got the owner's GitHub account (megadave19) **blocked** (`gh ... addComment` → "User is blocked"). Owner's product insight (correct): an agent that can't responsibly contribute is pointless, and PRs must be genuinely wanted + respect each repo's CONTRIBUTING/CoC. Reframed the product: Mendel's real market is **owned/org/opted-in repos** (how Dependabot/Renovate are actually used), not drive-by PRs on strangers' repos.
 - **New `lib/agent/eligibility.ts`:** pure `decideEligibility` + `gateSubmission`, and `assessContributionEligibility` (reads governance files from the clone). Verdicts: **owned** (contribute freely) · **blocked** (Dependabot/Renovate config present OR CONTRIBUTING red-flag like "open an issue first" → report only, even with ack) · **external** (non-owned: report-only by default; PR only if `externalContributionAck` AND high bar = `standard` confidence + verification passed — never a low-confidence draft on a stranger's repo).

@@ -277,6 +277,18 @@ If you find yourself looking for a way around any of these: stop, write `STATE.m
 
 **Forbidden:** opening a PR (or issue) on a repo you don't own without (a) an explicit acknowledgement AND (b) clearing the high bar; opening anything on a Dependabot/Renovate-automated or policy-restricted repo; treating "the CoC parses fine" as permission (compliance ≠ invitation — contribute where invited). If tempted to work around this: stop, write `STATE.md`, surface to owner.
 
+### 5c.2 Issue-linking — assist consent, never fabricate it (added 2026-05-29)
+
+The agent **assists** the human contribution dialogue; it never **impersonates** the human "yes" that dialogue exists to produce.
+
+1. **Link, don't create (external repos).** When opening a PR on a repo you don't own, *link* it to an EXISTING maintainer-opened issue (`Addresses #N`) — consent already exists, so linking is welcome. `lib/agent/issue-link.ts` matches by `dependencies` label / upgrade-intent title; `lib/github.listOpenIssues` is read-only.
+2. **NEVER create an issue on a repo you don't own.** Creating an issue is initiating unsolicited contact — the same spam class as an unsolicited PR (and it imposes a triage cost on a maintainer who didn't opt in). There is deliberately no external "create issue" code path.
+3. **NEVER open an issue and then self-PR it on a non-owned repo.** That games the "issue first" norm — the norm exists to get a *human maintainer's yes* before work; an agent answering its own issue manufactures fake consent. Anti-gaming, mirrors §5b rule 6 / §5c rule 7.
+4. **Owned repos** may run the full loop (open a tracking issue → PR → `Closes #N` → envelope-merge) — you consented by owning the repo.
+5. External, no relevant issue exists → **report only**; hand the human a draft so *they* decide whether to make contact, in their own voice.
+
+The governing principle: **act freely where consent exists (your repos, or an issue the maintainer already opened); everywhere else, prepare — never initiate.**
+
 ## 6. UI/UX Rules — Design Language
 
 (Full design ships in v1.0; v1.5 only adds calibrated color states for confidence.)

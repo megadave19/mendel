@@ -34,6 +34,15 @@ export interface OpenPR {
   draft: boolean
 }
 
+/** An open issue (not a PR), used by issue-linking (CLAUDE.md §5c.2). */
+export interface RepoIssue {
+  number: number
+  title: string
+  url: string
+  labels: string[]
+  body?: string
+}
+
 /**
  * v1.5 W#10 Push 2 — current GitHub state of a Mendel-opened PR, used by the
  * PR-state poller to detect merge/close transitions automatically.
