@@ -24,6 +24,59 @@ export function installCommand(pm: PackageManager, frozen = false): string {
   }
 }
 
+/**
+ * Turn a failed-install output blob into a human-readable cause. The install
+ * command runs with `2>&1`, so the captured stdout carries the npm/pnpm/yarn
+ * error. Previously a Phase-A failure surfaced only "install failed" with the
+ * real reason thrown away (it was stored in the SSE 'verify' event but never
+ * shown as a log line). §5b: be honest about *what* happened, not just *that*
+ * it failed.
+ *
+ * The most common cause for a dependency upgrade is a peer-dependency conflict
+ * (npm ERESOLVE): bumping a package to a major that requires a newer peer than
+ * the repo pins — e.g. `@react-three/fiber@9` needs `react@>=19` but the repo
+ * is on react@18. That's a genuine "this upgrade can't install without a
+ * coordinated migration", not a Mendel defect — so we report it clearly and
+ * let the agent skip honestly rather than force `--legacy-peer-deps`.
+ *
+ * Returns null when no pattern matches (caller still logs the raw output tail).
+ */
+export function explainInstallFailure(installOutput: string): string | null {
+  if (!installOutput) return null
+
+  // npm ERESOLVE — try to name the conflicting peer + the package demanding it.
+  if (/ERESOLVE/i.test(installOutput)) {
+    const m = installOutput.match(/peer (\S+?)@"([^"]+)" from (\S+?)@(\S+)/)
+    if (m) {
+      const [, peerName, peerRange, fromPkg, fromVer] = m
+      return (
+        `peer-dependency conflict — ${fromPkg}@${fromVer} requires ${peerName}@"${peerRange}", ` +
+        `which the repo doesn't satisfy. This upgrade can't install without a coordinated bump of ` +
+        `${peerName} (npm refuses by default; forcing --legacy-peer-deps would produce an unverified, ` +
+        `possibly broken tree).`
+      )
+    }
+    return 'peer-dependency conflict (npm ERESOLVE) — the upgrade is incompatible with a dependency currently pinned in the repo.'
+  }
+
+  // pnpm / yarn unmet-peer escalation
+  if (/unmet peer dependenc/i.test(installOutput) || /peer dependencies that are not installed/i.test(installOutput)) {
+    return 'unmet peer dependency — the upgrade requires a peer version the repo does not currently satisfy.'
+  }
+
+  // network / registry — likely the Phase-A allowlist (tier-1) blocking a host
+  if (/ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo|EAI_AGAIN/i.test(installOutput)) {
+    return 'network error during install — a required host may be outside the sandbox allowlist (Phase A tier-1). If it is a known binary registry, retry with tier-2 opt-in.'
+  }
+
+  // disk
+  if (/ENOSPC/i.test(installOutput)) {
+    return 'out of disk space in the sandbox during install.'
+  }
+
+  return null
+}
+
 export function detectTestCommand(repoPath: string, pm: PackageManager): string {
   const pkgPath = path.join(repoPath, 'package.json')
   if (!existsSync(pkgPath)) return ''

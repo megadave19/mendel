@@ -1,7 +1,7 @@
 import EventEmitter from 'events'
 import path from 'path'
 import { mkdirSync, rmSync, readFileSync } from 'fs'
-import { cloneRepo, detectMonorepo, getRepoMeta } from '@/lib/github'
+import { cloneRepo, detectMonorepo, getRepoMeta, assessSubmitCapability } from '@/lib/github'
 import { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
 import { parseSemanticDiff, type SemanticDiff } from './signals/semantic-diff'
@@ -19,7 +19,7 @@ import {
   ensureSandboxImage,
   volumeName,
 } from '@/lib/sandbox/executor'
-import { detectPackageManager, hasTsConfig, detectTestRunner } from '@/lib/sandbox/detect'
+import { detectPackageManager, hasTsConfig, detectTestRunner, explainInstallFailure } from '@/lib/sandbox/detect'
 import { db } from '@/lib/db'
 import { persistIssueData } from './issue-vm'
 import { buildReferenceIndex, findPackageUsageSites } from './signals/ast-parser'
@@ -141,6 +141,32 @@ export async function runScan(
     if (meta.private) throw new Error('Private repositories are not supported in v1.0')
     if (meta.size > 500 * 1024) throw new Error('Repository exceeds 500MB size limit')
 
+    // ── Pre-flight: can this token actually DELIVER a PR? ─────────────────────
+    // Decide now (~2s of API calls) so a token that can neither push nor fork
+    // fails fast with one clear instruction — instead of cloning + installing +
+    // analyzing for minutes and 403'ing at submit. Autonomy is bounded by
+    // granted authority (CLAUDE.md §5c): we surface the one-time setup; once the
+    // token can fork, every repo is forked + PR'd with zero manual steps.
+    log('Pre-flight: checking PR delivery capability...')
+    const capability = await assessSubmitCapability(pat, owner, repo)
+    if (capability.mode === 'blocked') {
+      log('⚠ Cannot deliver a PR with the current token — stopping before analysis.')
+      log(capability.reason)
+      emit({ type: 'error', message: capability.reason })
+      await db.scan
+        .update({
+          where: { id: scanId },
+          data: { status: 'failed', errorMessage: capability.reason.slice(0, 1000), completedAt: new Date() },
+        })
+        .catch(() => {})
+      return
+    }
+    log(
+      capability.mode === 'direct'
+        ? 'Pre-flight ✓ — write access confirmed; PRs push directly to the repo.'
+        : 'Pre-flight ✓ — no write access; Mendel will fork into your account and open PRs from the fork (autonomous, no manual steps).',
+    )
+
     log(`Cloning ${repoUrl}...`)
     mkdirSync(repoPath, { recursive: true })
 
@@ -216,6 +242,13 @@ export async function runScan(
       emit({ type: 'issue', dep: dep.name, currentVersion: dep.currentVersion, latestVersion: dep.latestVersion })
       issuesFound++
 
+      // Emit DIAGNOSE at the TOP of each iteration. The changelog + semantic-diff
+      // signal work and the diagnosis that follows are all the DIAGNOSE phase
+      // (matches the S4 left-pane subtitle "parsing changelog · cross-referencing
+      // usage"). Without this, these log lines inherit the PREVIOUS dep's
+      // VERIFY/SUBMIT phase tag — the per-dep loop reuses phases each iteration.
+      emit({ type: 'phase', phase: 'DIAGNOSE' })
+
       // ── Signals: changelog + semantic-diff in parallel ──────────────────────
       // v1.5 Workstream #1: semantic-diff runs alongside changelog. Both are
       // independent network-bound operations so we await Promise.all. Either
@@ -262,8 +295,7 @@ export async function runScan(
       }
       tokenEstimate.used += 4_000
 
-      // ── DIAGNOSE ────────────────────────────────────────────────────────────
-      emit({ type: 'phase', phase: 'DIAGNOSE' })
+      // ── DIAGNOSE (phase already emitted at the top of this iteration) ────────
       const diagnosis = await diagnoseIssue(dep, breakingChanges, repoPath, log)
       log(`Diagnosis: ${diagnosis.summary}`)
       tokenEstimate.used += 4_000
@@ -380,7 +412,15 @@ export async function runScan(
           log('⚠ TypeCheck failed — PR will open as Draft with verification warning')
         }
       } else {
-        log('⚠ Phase A failed — PR will open without verification results')
+        log('⚠ Phase A (install) failed — patch cannot be verified; PR submission will be skipped')
+        // Surface the REAL reason. The install runs with 2>&1 so phaseA.stdout
+        // carries the npm/pnpm error (e.g. ERESOLVE peer conflict). This used to
+        // be captured into the 'verify' event but never shown as a log line —
+        // the user was left with a bare "failed" (§5b: be honest about WHY).
+        const installCause = explainInstallFailure(phaseA.stdout)
+        if (installCause) log(`↳ Cause: ${installCause}`)
+        const outputTail = phaseA.stdout.trim().split('\n').filter(Boolean).slice(-10).join('\n')
+        if (outputTail) log(`Install output (tail):\n${outputTail}`)
       }
 
       // ── SUBMIT ──────────────────────────────────────────────────────────────

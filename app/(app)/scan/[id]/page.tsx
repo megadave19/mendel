@@ -63,17 +63,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   // Demo id → scripted mock; any real scan id → live SSE stream (same shape).
   const scan = useScanView(id)
   const isDemo = id === 'demo'
-  const pose = PHASE_TO_POSE[scan.phase]
   const depNodes = scan.deps
-
-  // Drive the sidebar mascot from this scan's phase. DESIGN.md §8: one mascot,
-  // present along the journey — no per-screen widgets. Reset to 'idle' on unmount
-  // so the next route doesn't inherit the running-scan state.
   const { setPhase } = useMascotPhase()
-  useEffect(() => {
-    setPhase(pose)
-    return () => setPhase('idle')
-  }, [pose, setPhase])
 
   // Fix #7 (audit-2): show repo name in the status strip instead of the cuid.
   const [repoName, setRepoName] = useState<string | null>(null)
@@ -188,6 +179,19 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   const prsOpenedCount = deliveredIssues.length
   const filesChangedCount = new Set(issues.filter((iss) => iss.filePath).map((iss) => iss.filePath)).size
 
+  // Drive the sidebar mascot from this scan's phase. DESIGN.md §8: one mascot,
+  // present along the journey. HONESTY FIX (2026-05-28): a completed scan only
+  // celebrates (success pose) when a PR actually opened. Bones must NEVER throw
+  // up a "DRAFT PR OPENED" banner when prsOpenedCount === 0 (the execa case:
+  // submission 403'd, 0 PRs, yet the mascot was celebrating). Reset to 'idle'
+  // on unmount so the next route doesn't inherit running-scan state.
+  const pose =
+    scan.phase === 'DONE' && prsOpenedCount === 0 ? ('idle' as const) : PHASE_TO_POSE[scan.phase]
+  useEffect(() => {
+    setPhase(pose)
+    return () => setPhase('idle')
+  }, [pose, setPhase])
+
   /**
    * Controlled-expansion map (Fix L3 audit 2026-05-26): when the DepGraph
    * fires onNodeClick, we expand the matching issue card AND scroll it into
@@ -282,7 +286,11 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
               {scan.phase}
             </p>
             <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginTop: '0.375rem', minHeight: '1.5em' }}>
-              {SUBSTATE[scan.phase]}
+              {scan.phase === 'DONE'
+                ? prsOpenedCount > 0
+                  ? `${prsOpenedCount} draft PR${prsOpenedCount === 1 ? '' : 's'} opened`
+                  : 'scan complete · no PR opened'
+                : SUBSTATE[scan.phase]}
             </p>
             {scan.activeNodeId && scan.running && (
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.06em', color: 'var(--accent-secondary)', marginTop: '0.5rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

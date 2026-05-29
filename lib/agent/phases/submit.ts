@@ -1,5 +1,5 @@
 import simpleGit from 'simple-git'
-import { createDraftPR, findOpenPRsByHeadPattern } from '@/lib/github'
+import { createDraftPR, findOpenPRsByHeadPattern, canPushToRepo, ensureFork } from '@/lib/github'
 import type { FilePatch } from '@/lib/agent/patching/full-file'
 import type { BreakingChange } from '@/lib/agent/signals/changelog'
 import type { Diagnosis } from './diagnose'
@@ -152,9 +152,27 @@ export async function submitDraftPR(
 
   const branchName = makeBranchName(dep)
 
-  // Configure git with PAT in remote URL for push auth
+  // Decide where to PUSH the branch. We can only push to a repo we have write
+  // access to. For repos the user doesn't own (the common OSS case), pushing to
+  // upstream 403s — so fork into the user's account, push to the fork, and open
+  // the PR fork→upstream. The PR itself is ALWAYS created on the upstream repo
+  // (owner/repo) so it shows as a contribution there; only the head differs.
+  let pushOwner = owner
+  let pushRepo = repo
+  let prHead = branchName // cross-repo PRs use `forkOwner:branch`
+  const hasWriteAccess = await canPushToRepo(pat, owner, repo)
+  if (!hasWriteAccess) {
+    emit(`No write access to ${owner}/${repo} — forking into your account...`)
+    const fork = await ensureFork(pat, owner, repo)
+    pushOwner = fork.owner
+    pushRepo = fork.repo
+    prHead = `${fork.owner}:${branchName}`
+    emit(`Fork ready: ${fork.owner}/${fork.repo}`)
+  }
+
+  // Configure git with PAT in the push-target remote URL for auth
   const git = simpleGit(repoPath)
-  const authRemote = `https://${pat}@github.com/${owner}/${repo}.git`
+  const authRemote = `https://${pat}@github.com/${pushOwner}/${pushRepo}.git`
   await git.remote(['set-url', 'origin', authRemote])
 
   emit(`Creating branch ${branchName}...`)
@@ -164,19 +182,20 @@ export async function submitDraftPR(
     `fix(deps): upgrade ${dep.name} from ${dep.currentVersion} to ${dep.latestVersion}\n\nCo-authored-by: Mendel <mendel@bot.local>`,
   )
 
-  emit('Pushing branch...')
+  emit(hasWriteAccess ? 'Pushing branch...' : 'Pushing branch to fork...')
   await git.push('origin', branchName)
 
-  // Reset remote URL to non-authenticated form
-  await git.remote(['set-url', 'origin', `https://github.com/${owner}/${repo}.git`])
+  // Reset remote URL to the non-authenticated push target
+  await git.remote(['set-url', 'origin', `https://github.com/${pushOwner}/${pushRepo}.git`])
 
   const isDraft = mode === 'draft'
   emit(isDraft ? 'Opening Draft PR...' : 'Opening standard PR (score above threshold)...')
   const body = buildPRBody(dep, breakingChanges, diagnosis, patches, verificationPassed, confidenceScore, mode)
+  // PR is created on the UPSTREAM repo (owner/repo); head may be `forkOwner:branch`.
   const prUrl = await createDraftPR(pat, owner, repo, {
     title: `fix(deps): upgrade ${dep.name} ${dep.currentVersion} → ${dep.latestVersion}`,
     body,
-    head: branchName,
+    head: prHead,
     base: defaultBranch,
     draft: isDraft,
   })

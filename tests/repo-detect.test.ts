@@ -23,6 +23,7 @@ import {
   hasBuildScript,
   hasTsConfig,
   detectTestRunner,
+  explainInstallFailure,
 } from '@/lib/sandbox/detect'
 
 let tmpRoot: string
@@ -203,5 +204,44 @@ describe('detectTestRunner', () => {
   it('malformed package.json → none (no throw)', async () => {
     const repo = await makeRepo('tr-bad', { 'package.json': 'not-json' })
     expect(detectTestRunner(repo)).toBe('none')
+  })
+})
+
+describe('explainInstallFailure', () => {
+  // The real ERESOLVE output reproduced from megadave19/Antarang-Portfolio when
+  // bumping @react-three/fiber 8→9 (which requires react@>=19) on a react@18 repo.
+  const eresolve = `npm error code ERESOLVE
+npm error ERESOLVE unable to resolve dependency tree
+npm error While resolving: antarang-portfolio@1.0.0
+npm error Found: react@18.3.1
+npm error Could not resolve dependency:
+npm error peer react@">=19 <19.3" from @react-three/fiber@9.6.1
+npm error node_modules/@react-three/fiber
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps`
+
+  it('extracts the conflicting peer + the package demanding it (the Antarang case)', () => {
+    const msg = explainInstallFailure(eresolve)
+    expect(msg).toContain('peer-dependency conflict')
+    expect(msg).toContain('@react-three/fiber@9.6.1')
+    expect(msg).toContain('react')
+    expect(msg).toContain('>=19 <19.3')
+  })
+
+  it('falls back to a generic ERESOLVE message when the peer line is absent', () => {
+    const msg = explainInstallFailure('npm error code ERESOLVE\nnpm error unable to resolve dependency tree')
+    expect(msg).toContain('ERESOLVE')
+  })
+
+  it('recognizes network/registry failures (allowlist hint)', () => {
+    expect(explainInstallFailure('npm error network getaddrinfo ENOTFOUND registry.npmjs.org')).toMatch(/network|allowlist/i)
+  })
+
+  it('recognizes ENOSPC (disk)', () => {
+    expect(explainInstallFailure('npm error nospc ENOSPC: no space left on device')).toMatch(/disk/i)
+  })
+
+  it('returns null for unrecognized / empty output (caller logs the raw tail)', () => {
+    expect(explainInstallFailure('some unrelated build noise')).toBeNull()
+    expect(explainInstallFailure('')).toBeNull()
   })
 })
