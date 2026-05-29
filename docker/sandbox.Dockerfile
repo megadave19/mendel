@@ -11,7 +11,13 @@ RUN npm install -g pnpm@9.0.0 yarn@1.22.22
 # - iptables: v1.5 W#8 default-deny allowlist on Phase A (CLAUDE.md §5 Rule 12)
 # - su-exec: drop privileges from root → node after allowlist applies
 # - bind-tools: getent ahostsv4 for hostname-to-IP resolution in the entrypoint
-RUN apk add --no-cache curl iptables su-exec bind-tools
+# - git: git-based dependencies + some install scripts need it (was missing →
+#   silent Phase A failures)
+# - python3 + build-base: node-gyp native-module compilation (sharp,
+#   better-sqlite3, etc.) — without these, any repo with a native dep failed to
+#   install. (Note: alpine/musl still can't run some glibc prebuilt binaries;
+#   a debian-slim base would close that remaining gap — tracked as a follow-up.)
+RUN apk add --no-cache curl iptables su-exec bind-tools git python3 build-base
 
 # Entrypoint runs as root, applies the iptables allowlist, then drops to the
 # non-root node user (UID 1000) for the actual install command. CLAUDE.md §5

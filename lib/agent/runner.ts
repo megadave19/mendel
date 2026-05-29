@@ -21,6 +21,7 @@ import {
   runPhaseB,
   cleanupVolume,
   ensureSandboxImage,
+  checkSandboxReadiness,
   volumeName,
 } from '@/lib/sandbox/executor'
 import { detectPackageManager, hasTsConfig, detectTestRunner, explainInstallFailure } from '@/lib/sandbox/detect'
@@ -276,6 +277,28 @@ export async function runScan(
 
     log('Preparing sandbox image...')
     await ensureSandboxImage()
+
+    // Sandbox-readiness pre-flight (2026-05-29). Verify the image can actually
+    // run THIS repo's package manager (+ git/node) BEFORE the per-dep loop —
+    // so a tooling gap (e.g. a yarn repo on an image without yarn) fails fast
+    // in ~2s with a clear message, instead of failing Phase A per-dep after
+    // minutes of wasted analysis (the ta-vivo case). Answers "why did the
+    // pre-flight let analysis proceed?" — the earlier pre-flight only checked
+    // PR-DELIVERY capability; this checks VERIFICATION capability.
+    const readiness = await checkSandboxReadiness(pmDetected)
+    if (!readiness.ok) {
+      log(`⚠ Sandbox not ready for this repo — stopping before analysis.`)
+      log(readiness.reason)
+      emit({ type: 'error', message: readiness.reason })
+      await db.scan
+        .update({
+          where: { id: scanId },
+          data: { status: 'failed', errorMessage: readiness.reason.slice(0, 1000), completedAt: new Date() },
+        })
+        .catch(() => {})
+      return
+    }
+    log(`Sandbox ready ✓ (${pmDetected} · git · node available)`)
 
     let issuesFound = 0
     let prsOpened = 0

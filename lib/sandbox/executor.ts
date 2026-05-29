@@ -1,8 +1,8 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
-import { installCommand, detectTestCommand, hasBuildScript, hasTsConfig } from './detect'
-import type { SandboxConfig, PhaseAResult, PhaseBResult } from './types'
+import { installCommand, detectTestCommand, hasBuildScript, hasTsConfig, explainInstallFailure } from './detect'
+import type { SandboxConfig, PhaseAResult, PhaseBResult, PackageManager } from './types'
 import { buildAllowlist, serializeAllowlistEnv } from './iptables-allowlist'
 import { computeCacheKey, cacheVolumeName } from './cache'
 import {
@@ -15,9 +15,10 @@ const execAsync = promisify(exec)
 
 // Tag bumps force a one-time rebuild on existing dev machines (ensureSandboxImage
 // skips the build when the tag already exists). v1.5 W#8 added iptables; v1.5.1
-// (2026-05-29) adds `yarn` to the image so yarn-lockfile repos can install —
-// without it, every yarn repo failed Phase A with "yarn: not found".
-export const IMAGE_NAME = 'mendel-sandbox:v1.5.1'
+// added `yarn`; v1.5.2 (2026-05-29) adds `git` + a native-build toolchain
+// (python3/build-base) — git-based deps and node-gyp native modules were
+// failing Phase A install otherwise. Each was a silent "Phase A failed".
+export const IMAGE_NAME = 'mendel-sandbox:v1.5.2'
 const PHASE_A_TIMEOUT_MS = 3 * 60 * 1000
 const PHASE_B_TIMEOUT_MS = 5 * 60 * 1000
 const MEMORY_CAP = '2g'
@@ -45,6 +46,38 @@ export async function ensureSandboxImage(): Promise<void> {
     { timeout: 5 * 60 * 1000 },
   )
   console.log('[sandbox] Image built.')
+}
+
+/**
+ * Sandbox-readiness pre-flight (2026-05-29). The yarn bug taught us a whole
+ * class: Mendel detects a repo's package manager, but if the sandbox IMAGE
+ * can't actually run it, Phase A fails per-dep with a cryptic "install failed"
+ * — after minutes of wasted analysis. This verifies the image can handle THIS
+ * repo (its package manager + git) in ~2s, BEFORE the per-dep loop, so a tooling
+ * gap fails fast with a clear message instead of silently capping confidence.
+ * Run via --entrypoint=sh to bypass the iptables entrypoint (no network needed).
+ */
+export async function checkSandboxReadiness(
+  pm: PackageManager,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    await execAsync(
+      `docker run --rm --entrypoint=sh ${IMAGE_NAME} -c "${pm} --version && git --version && node --version"`,
+      { timeout: 20_000 },
+    )
+    return { ok: true }
+  } catch (err) {
+    const e = err as { stdout?: string; stderr?: string }
+    const out = `${e.stderr ?? ''}\n${e.stdout ?? ''}`.trim() || String(err)
+    const hint = explainInstallFailure(out)
+    return {
+      ok: false,
+      reason:
+        `the sandbox image cannot run "${pm}" (or git/node). ` +
+        (hint ?? out.slice(-200)) +
+        ` — this is a Mendel sandbox bug; rebuild the image or report it.`,
+    }
+  }
 }
 
 // ─── Volume naming ───────────────────────────────────────────────────────────

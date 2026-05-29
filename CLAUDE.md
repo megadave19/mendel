@@ -725,6 +725,11 @@ Dev review flagged four areas where LLMs commonly hallucinate plausible-looking 
 - **Monorepo install:** verify workspace deps actually resolve inside the container (a classic place for pm/Docker hallucination).
 - "It compiles and looks right" is NOT evidence for Docker code. Run the real container.
 
+**Toolchain-completeness rule (added 2026-05-29 — the yarn bug).** A whole class of silent "Phase A failed" came from the sandbox image *not actually containing* what a repo needs, while `detect.ts` happily returned the command. The image shipped pnpm but **no yarn** → every yarn repo failed install; it also lacked **git** and a **native-build toolchain** (python3/build-base) → git-deps and node-gyp modules failed. None were caught because every test repo used npm/pnpm. Rules:
+- **If `detect.ts` can select a tool (package manager, test runner, language), the sandbox image MUST contain it — and a real-container test must prove `<tool> --version` runs.** Coverage must span the *whole matrix* (npm AND pnpm AND yarn), not one representative.
+- **A `checkSandboxReadiness(pm)` pre-flight runs before the per-dep loop** (`lib/sandbox/executor.ts`): it verifies the image can run THIS repo's package manager + git + node, and fails fast with a clear message if not — so a tooling gap costs ~2s, not minutes of wasted analysis. (The earlier pre-flight checked PR-*delivery* capability; this checks *verification* capability — distinct gates.)
+- **Bumping the image requires bumping `IMAGE_NAME`** (`ensureSandboxImage` skips the build when the tag exists), or existing dev machines keep the stale image.
+
 ### 11b.2 AST Parsing with @typescript-eslint/parser
 
 **The trap:** The parser's API is complex and version-sensitive. LLMs generate plausible-looking AST traversal code that doesn't compile, references methods that don't exist on the current parser version, or returns wrong node types.

@@ -99,6 +99,18 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (general guard — sandbox-readiness pre-flight + toolchain completion; root-causing the bug CLASS)**
+After the yarn fix, owner asked the right questions: *why* do bugs like this exist, why not caught on execa, are there more, and why didn't our pre-flight stop the wasted analysis. Answers + fixes:
+- **Why the class exists:** `detect.ts` could *select* a tool (yarn) the sandbox image didn't *contain*. Half-implemented: the code branch existed, the runtime support didn't. Never caught because **every test repo used npm/pnpm** — the yarn branch was effectively dead-tested. Classic §11b.1 "looks right, never run in a real container."
+- **Why execa didn't surface it:** execa is **npm** (npm ships in the base image) — its Phase A succeeded; its failure was Phase B (tests). The yarn gap only shows on a yarn repo; ta-vivo was the first.
+- **More bugs found (same class):** image also lacked **git** (git-based deps / install scripts) and a **native-build toolchain** (python3/build-base for node-gyp) → both silent "Phase A failed". (Deeper, flagged-not-fixed: alpine/musl can't run some glibc prebuilt native binaries — a debian-slim base would close it; tracked as follow-up.)
+- **Why the pre-flight didn't stop the waste (owner's catch):** the pre-flight we built checks **PR-DELIVERY** capability (token push/fork) — not **VERIFICATION** capability. ta-vivo passed delivery (token can fork) → analysis ran 138s → Phase A failed per-dep. Distinct gate was missing.
+- **General guards implemented:**
+  1. **`checkSandboxReadiness(pm)`** (`lib/sandbox/executor.ts`) — runs `<pm> --version && git --version && node --version` in the image (~2s, `--entrypoint=sh`, no network) BEFORE the per-dep loop. Runner aborts fast with a clear message if the image can't handle the repo. Catches the whole "tool selected but not in image" class.
+  2. **Image completed:** Dockerfile adds `git python3 build-base`; tag bumped `v1.5.1`→**`v1.5.2`** so it rebuilds.
+  3. **CLAUDE.md §11b.1 toolchain-completeness rule** added: if `detect.ts` can select a tool, the image MUST contain it + a real-container test must prove it across the whole matrix (npm AND pnpm AND yarn), not one representative.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **312 passed** / 7 gated. Live re-verify: re-scan a repo → first scan rebuilds v1.5.2 (~30-60s, now also compiles native deps), readiness check logs `Sandbox ready ✓`.
+
 **2026-05-29 (sandbox bug — yarn missing from image; every yarn repo failed verification)**
 Scanned `ta-vivo/ta-vivo` (yarn repo): 3 issues found, **0 PRs, all CONF 50/100 LOW "capped by verification failure."** Owner asked why no PRs + why low confidence. Audit:
 - **Root cause:** the sandbox image (`docker/sandbox.Dockerfile`) installed pnpm + base npm but **NOT yarn**. `detect.ts` returns `yarn install` for yarn-lockfile repos → container had no `yarn` binary → Phase A failed instantly ("yarn: not found"). Phase-A failure caps confidence at 50 (§5b) and hard-skips the PR. So **every yarn repo silently failed verification** — systemic, not ta-vivo-specific.
