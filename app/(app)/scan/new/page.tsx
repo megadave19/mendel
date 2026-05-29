@@ -107,6 +107,7 @@ export default function NewScanPage() {
   /* v1.5 W#8 Push 2 — per-scan tier-2 allowlist. Seeded from the saved
      Settings default; edits here are scoped to this scan only. */
   const [tier2Hosts, setTier2Hosts] = useState<string[]>([])
+  const [externalAck, setExternalAck] = useState(false)
   const [allowlistOpen, setAllowlistOpen] = useState(false)
   const [hostDraft, setHostDraft] = useState('')
   const [hostError, setHostError] = useState<string | null>(null)
@@ -196,6 +197,9 @@ export default function NewScanPage() {
           // v1.5 W#8 Push 2 — only attach when non-empty so the server's
           // tier-1-only default path stays live for users who never touch it.
           ...(tier2Hosts.length > 0 ? { tier2AllowlistHosts: tier2Hosts } : {}),
+          // §5c Contribution Eligibility — only opens PRs on a repo you don't
+          // own when you've confirmed it welcomes them (else: report only).
+          ...(externalAck ? { externalContributionAck: true } : {}),
         }),
       })
       if (!res.ok) {
@@ -274,6 +278,23 @@ export default function NewScanPage() {
                   ✕ {errorMsg}
                 </motion.p>
               )}
+              {/* §5c Contribution Eligibility — opening PRs on a repo you don't
+                  own requires explicitly confirming it welcomes them. Without
+                  this, a non-owned repo is analyzed but gets NO PR (report only). */}
+              <label style={{ marginTop: '0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <input
+                  type="checkbox"
+                  checked={externalAck}
+                  onChange={(e) => setExternalAck(e.target.checked)}
+                  style={{ marginTop: '0.15rem', flexShrink: 0, accentColor: 'var(--accent-secondary)' }}
+                />
+                <span>
+                  This repo <strong>welcomes dependency PRs</strong> — I&apos;ve read its CONTRIBUTING &amp; Code of Conduct.{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Leave unchecked for repos you don&apos;t maintain — Mendel will analyze and report, but won&apos;t open a PR.
+                  </span>
+                </span>
+              </label>
             </PanelFrame>
           </form>
 

@@ -21,6 +21,13 @@ const StartScanSchema = z.object({
    * never silently drop them per CLAUDE.md §5b).
    */
   tier2AllowlistHosts: z.array(z.string().max(253)).max(32).optional(),
+  /**
+   * 2026-05-29 — Contribution Eligibility Gate (CLAUDE.md §5c). For repos the
+   * user doesn't own, set true to confirm the repo welcomes dependency PRs
+   * (they've read its CONTRIBUTING + CoC). Default false → non-owned repos are
+   * analyzed but no PR is opened (report only). Owned repos ignore this.
+   */
+  externalContributionAck: z.boolean().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -50,6 +57,7 @@ export async function POST(req: NextRequest) {
     void runScan(scan.id, body.repoUrl, body.pat, {
       confidenceThreshold: body.confidenceThreshold,
       tier2AllowlistHosts: body.tier2AllowlistHosts,
+      externalContributionAck: body.externalContributionAck,
     })
 
     return NextResponse.json({ id: scan.id }, { status: 202 })

@@ -265,6 +265,18 @@ If you find yourself looking for a way around any of these: stop, write `STATE.m
 
 **Never auto-merge on:** any detected breaking change, signal disagreement, failed/absent smoke, score below floor, a dep with rejection history, or a repo where the PAT lacks merge rights — *regardless of user settings.* If you find yourself looking for a way around any of these: stop, write `STATE.md` note, surface to owner.
 
+### 5c.1 Contribution Eligibility — respect the repo's norms (added 2026-05-29)
+
+§5c also governs *whether a contribution is welcome at all.* An autonomous agent that spams maintainers is a net-negative product (this rule exists because unsolicited automated PRs on `sindresorhus/execa` got the owner's account **blocked**). Implemented as `lib/agent/eligibility.ts`, gated in the runner. The bar to open a PR on a repo you do NOT own is far higher than on one you do:
+
+1. **Owned/maintained repo** (push access) → contribute freely; Drafts are fine (you review your own).
+2. **Non-owned, default** → **REPORT ONLY. No PR.** Mendel analyzes + persists diagnosis but does not open anything unless the user explicitly acknowledges the repo welcomes dependency PRs (they've read its CONTRIBUTING + CoC). This default alone prevents the execa-class incident.
+3. **Non-owned + acknowledged** → a PR is allowed ONLY at a HIGH bar: confidence ≥ threshold (`standard` mode) AND verification passed. **Never a low-confidence Draft on a repo you don't maintain** — that is the spam.
+4. **Hard-blocked, regardless of acknowledgement** → the repo already automates deps (Dependabot/Renovate config present) OR its CONTRIBUTING discourages drive-by dependency PRs ("open an issue first", "no dependency PRs"). Report only.
+5. Every skip logs the reason. Never silently open, never silently suppress.
+
+**Forbidden:** opening a PR (or issue) on a repo you don't own without (a) an explicit acknowledgement AND (b) clearing the high bar; opening anything on a Dependabot/Renovate-automated or policy-restricted repo; treating "the CoC parses fine" as permission (compliance ≠ invitation — contribute where invited). If tempted to work around this: stop, write `STATE.md`, surface to owner.
+
 ## 6. UI/UX Rules — Design Language
 
 (Full design ships in v1.0; v1.5 only adds calibrated color states for confidence.)
@@ -779,6 +791,8 @@ If something isn't working after 3 attempts:
 ---
 
 ## Revisions
+
+**Rev 6 (2026-05-29)** — **§5c.1 Contribution Eligibility Gate** added (non-negotiable). Triggered by real-world fallout: unsolicited automated PRs on `sindresorhus/execa` got the owner's account blocked. The agent must respect each repo's contribution norms — non-owned repos are report-only by default; PRs there require explicit acknowledgement AND a high bar (high confidence + passing verification); repos that already automate deps (Dependabot/Renovate) or whose CONTRIBUTING discourages drive-by PRs are hard-blocked. Implemented in `lib/agent/eligibility.ts` (pure `decideEligibility`/`gateSubmission` + `assessContributionEligibility` governance reader), gated in the runner, opt-in via New Scan checkbox + `externalContributionAck` API field. 17 new tests. Also (same day) PR-hygiene fixes: per-dep working-tree isolation (no cross-contaminated PRs) + surgical formatting-preserving `package.json` bump.
 
 **Rev 5 (2026-05-28)** — v2 development cycle (local-first; cloud → v3). Companion: new [V2_PLAN.md](http://v2_plan.md/) (full phased blueprint for F19–F26). §1 phase status updated (v1.5 engineering complete, **v2 active**, v3 = cloud). §2 stack table gains a v2 column (per-language sandbox images + `griffe`/`apidiff`/`cargo-semver-checks`, `node-cron`, `@modelcontextprotocol/sdk`; R3F officially dropped for vanilla Three.js). §3 file structure adds `lib/agent/lang|workspace|automerge`, `lib/eval`, `lib/sandbox/provider.ts|smoke.ts`, `worker/`, `mcp/`, `eval/`. §5 adds rules 16–18 (Phase C network=none, worker/MCP boundaries, execFile-not-shell). §5b adds v2 rules (language-aware ceilings, eval-bench honesty anchor). **§5c added (NEW): Honesty-of-Action floor** gating auto-merge — non-negotiable. **§7 Testing extended for v2** (same development style, scaled): §7.1 adds eval-bench + real-container test layers; §7.3 adds v2.0–v2.3 phase gates (incl. per-language sub-gates); §11b.1 adds the v2 Docker reinforcement. §11 Forbidden Patterns extended with v2 additions (auto-merge envelope, no decorative viz, no R3F, no v3-during-v2, build-cache hygiene). Companion spec edits: PRD Rev 5 (§12→F19–F26 + §12b v3), TRD Rev 4 (§6.4 per-language, §8.5–8.7, §9.5 auto-merge, §10 new models, §11 routes, §15 v2/v3 split, §17 table), DESIGN Rev 2 (§7 5th lane, §8 "watching" pose, §9 vanilla-Three reconcile, §11b v2 briefs, §12 LangBadge/SmokeResultPanel).
 

@@ -99,6 +99,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (Contribution Eligibility Gate — respect repo norms; CLAUDE.md §5c.1)**
+Triggered by real fallout: the unsolicited automated PRs Mendel opened on `sindresorhus/execa` got the owner's GitHub account (megadave19) **blocked** (`gh ... addComment` → "User is blocked"). Owner's product insight (correct): an agent that can't responsibly contribute is pointless, and PRs must be genuinely wanted + respect each repo's CONTRIBUTING/CoC. Reframed the product: Mendel's real market is **owned/org/opted-in repos** (how Dependabot/Renovate are actually used), not drive-by PRs on strangers' repos.
+- **New `lib/agent/eligibility.ts`:** pure `decideEligibility` + `gateSubmission`, and `assessContributionEligibility` (reads governance files from the clone). Verdicts: **owned** (contribute freely) · **blocked** (Dependabot/Renovate config present OR CONTRIBUTING red-flag like "open an issue first" → report only, even with ack) · **external** (non-owned: report-only by default; PR only if `externalContributionAck` AND high bar = `standard` confidence + verification passed — never a low-confidence draft on a stranger's repo).
+- **Runner:** computes eligibility after clone (`ownsRepo = capability.mode==='direct'`), logs the verdict, runs report-only when not eligible; submit now goes through `gateSubmission`. Every skip logs its reason.
+- **API + UI:** `externalContributionAck` Zod field on `POST /api/scans`; New Scan checkbox ("This repo welcomes dependency PRs — I've read its CONTRIBUTING & CoC; else report-only").
+- **The default alone would have prevented the execa incident** (non-owned + no ack = no PR).
+- Docs: CLAUDE.md §5c.1 + Rev 6, V2_PLAN §2.2a. Honest stance baked in: *compliance ≠ invitation; contribute where invited.*
+- Verification: typecheck ✅, lint ✅, `pnpm test` ✅ **303 passed** / 7 gated (+17 eligibility tests). Live-verify next: scan an OWNED repo (PRs open) vs a non-owned one without ack (report-only, no PR).
+
 **2026-05-29 (PR-hygiene fixes — surfaced auditing the real execa PRs #1237 etc.)**
 Audited the 3 live PRs Mendel opened on `sindresorhus/execa`. The dependency changes were REAL + correct (ava→8.0.1, c8→11.0.0, is-in-ci→2.0.0; not hallucinated) and honestly labeled low/medium-confidence Drafts. But two real defects:
 - **Bug 1 — PR cross-contamination.** Each PR's branch was cut from the *accumulated* working tree, so the is-in-ci PR (#1237) also contained ava+c8 bumps; verification also ran cumulatively (inflating false Phase-B failures). **Fix:** runner captures `baseSha` after clone and resets the working tree (`git checkout -f baseSha` + `clean -fd`) at the top of each dep iteration → each dep's patch/verify/PR is isolated. `simple-git` added to runner.

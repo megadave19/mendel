@@ -44,6 +44,14 @@ Everything we build local must be **shaped** so v3 (cloud) is a deployment proje
 ### 2.2 Honesty floor extends to autonomy (new — see §8.4)
 v1.5's §5b was about *framing what the agent knows*. v2 adds *acting on what it knows* (auto-merge). The honesty floor therefore gets a new clause: **the bar to ACT autonomously is strictly higher than the bar to SUGGEST, and is opt-in, narrow, reversible, and logged.** Detailed rules in §8.4; proposed as a new CLAUDE.md §5c.
 
+### 2.2a Contribution Eligibility — respect the repo's norms (shipped 2026-05-29, CLAUDE.md §5c.1)
+A second honesty axis, learned the hard way: unsolicited automated PRs on `sindresorhus/execa` got the account **blocked**. An autonomous agent that spams maintainers is a net-negative product. So Mendel respects each repo's contribution norms before acting:
+- **Owned repos** → contribute freely (Drafts fine).
+- **Non-owned repos** → **report only by default** (analyze + persist diagnosis, no PR). A PR requires an explicit acknowledgement that the repo welcomes dependency PRs *and* a HIGH bar (confidence ≥ threshold + passing verification). Never a low-confidence Draft on a repo you don't maintain.
+- **Hard-blocked** → repo already runs Dependabot/Renovate, or its CONTRIBUTING discourages drive-by PRs.
+
+Compliance ≠ invitation: parsing the CoC/CONTRIBUTING reduces harm but the governing stance is **"contribute where invited."** This reframes Mendel's primary market as owned/org/opted-in repos (how Dependabot/Renovate are actually used) — not drive-by PRs on strangers' repos. Implemented in `lib/agent/eligibility.ts`, gated in the runner, opt-in via the New Scan acknowledgement checkbox.
+
 ### 2.3 Every lesson from v1.x is a guardrail, not a memory
 The §7.2a regime (no dead controls, no decorative-only data viz, mandatory spec-conformance audit, spec-deviation protocol) and the §11b "verify against a real fixture" rules **apply unchanged to v2** and are extended per-capability in §9. The recurring pattern that bit us — *plausible code that compiles but doesn't run* (Docker flags, AST APIs, SSE plumbing, regex edge cases) — is exactly what multi-language + smoke-test + auto-merge will stress. Real-fixture verification is mandatory, not optional, for all of v2.
 

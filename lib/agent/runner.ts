@@ -13,6 +13,7 @@ import { buildAllowlist } from '@/lib/sandbox/iptables-allowlist'
 import { diagnoseIssue } from './phases/diagnose'
 import { patchFileSmart } from './patching'
 import { submitDraftPR } from './phases/submit'
+import { assessContributionEligibility, gateSubmission, type EligibilityVerdict } from './eligibility'
 import {
   runPhaseA,
   runPhaseB,
@@ -110,6 +111,15 @@ const PER_FILE_TOKEN_ESTIMATE = 8_000
 export interface RunScanOptions {
   confidenceThreshold?: number
   tier2AllowlistHosts?: string[]
+  /**
+   * 2026-05-29 — Contribution Eligibility Gate (CLAUDE.md §5c). For a repo the
+   * user does NOT own, Mendel opens a PR only if the user explicitly confirms
+   * the repo welcomes dependency PRs (they've read its CONTRIBUTING + CoC).
+   * Default false → non-owned repos are analyzed but get NO PR (report only).
+   * Owned repos ignore this. Hard-blocked repos (Dependabot/Renovate present,
+   * or a CONTRIBUTING "no dependency PRs" policy) get no PR regardless.
+   */
+  externalContributionAck?: boolean
 }
 
 export async function runScan(
@@ -211,6 +221,22 @@ export async function runScan(
     log(
       `Repo profile — package manager: ${pmDetected} · type system: ${isTs ? 'TypeScript (tsconfig.json)' : 'JavaScript (no tsconfig — Tier-3 confidence)'} · test runner: ${tr}`,
     )
+
+    // ── Contribution-eligibility gate (CLAUDE.md §5c, honesty-of-action) ──────
+    // Respect the repo's norms + don't spam maintainers. "Owned" = we can push
+    // (capability.mode === 'direct'). Non-owned repos are analyzed but only get
+    // a PR if the user acknowledged it welcomes them AND the change clears a high
+    // bar (gated per-issue at submit). Hard-blocked if the repo already automates
+    // deps or its CONTRIBUTING discourages drive-by dependency PRs.
+    const ownsRepo = capability.mode === 'direct'
+    const eligibility: EligibilityVerdict = assessContributionEligibility(repoPath, {
+      ownsRepo,
+      externalAck: options.externalContributionAck ?? false,
+    })
+    log(`Contribution check: ${eligibility.decision.toUpperCase()} — ${eligibility.reason}`)
+    if (!ownsRepo && !eligibility.canOpenPRs) {
+      log('↳ This scan runs as REPORT-ONLY — diagnosis will be persisted, no PR will be opened.')
+    }
 
     log('Checking dependencies...')
     const staleDeps = await detectStaleDeps(repoPath, log)
@@ -485,8 +511,13 @@ export async function runScan(
         const submissionMode = chooseSubmissionMode(confidenceScore, thresholdCfg)
         log(`Threshold gate: ${explainSubmissionMode(submissionMode, confidenceScore, thresholdCfg)}`)
 
-        if (submissionMode === 'skip') {
-          log('⚠ Skipping PR submission — score below floor (40). Diagnosis persisted for review.')
+        // Contribution-eligibility gate (CLAUDE.md §5c): combines the threshold
+        // result with the repo's contribution norms. Owned repos behave as
+        // before; non-owned repos need acknowledgement AND a high bar; blocked
+        // repos never get a PR.
+        const gate = gateSubmission({ eligibility, submissionMode, verificationPassed })
+        if (!gate.allow) {
+          log(`⚠ Skipping PR submission — ${gate.reason}`)
         } else {
           try {
             const result = await submitDraftPR(
