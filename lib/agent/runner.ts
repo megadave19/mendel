@@ -253,19 +253,37 @@ export async function runScan(
     }
 
     log('Checking dependencies...')
-    const staleDeps = await detectStaleDeps(repoPath, log)
+    const { stale: staleDeps, checked, failed } = await detectStaleDeps(repoPath, log)
+
+    // Honesty (§5b): if NO dep could be checked (every npm lookup failed —
+    // typically rate-limiting after many scans), this is a FAILURE, not a clean
+    // "nothing stale". Surface it as such so the user re-runs instead of
+    // believing the repo is up to date. (Answers "nothing happened, just done?")
+    if (staleDeps.length === 0 && checked === 0 && failed > 0) {
+      const msg = `Couldn't check dependency staleness — all ${failed} npm registry lookups failed (likely rate limit). Re-run in a minute.`
+      log(`⚠ ${msg}`)
+      emit({ type: 'error', message: msg })
+      await db.scan
+        .update({ where: { id: scanId }, data: { status: 'failed', errorMessage: msg, completedAt: new Date() } })
+        .catch(() => {})
+      return
+    }
 
     if (staleDeps.length === 0) {
-      log('No significantly stale dependencies found.')
+      log(
+        failed > 0
+          ? `No stale deps among the ${checked} checked — but ${failed} couldn't be checked, so this is incomplete; re-run shortly.`
+          : 'No significantly stale dependencies found.',
+      )
       await db.scan.update({
         where: { id: scanId },
         data: { status: 'completed', completedAt: new Date() },
       })
-      emit({ type: 'done', summary: 'No stale dependencies detected.' })
+      emit({ type: 'done', summary: failed > 0 ? `No stale deps among ${checked} checked (${failed} unchecked).` : 'No stale dependencies detected.' })
       return
     }
 
-    log(`Found ${staleDeps.length} stale dep(s): ${staleDeps.map((d) => d.name).join(', ')}`)
+    log(`Found ${staleDeps.length} stale dep(s): ${staleDeps.map((d) => d.name).join(', ')}${failed > 0 ? ` (${failed} unchecked — rate limit)` : ''}`)
 
     // Fix #9: pre-check Docker so a missing daemon throws an actionable error
     // instead of failing cryptically deep inside ensureSandboxImage().

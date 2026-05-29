@@ -118,7 +118,7 @@ async function main() {
   // ── 3. Detect stale deps ───────────────────────────────────────────────────
   console.log('\n[ 3/8 ] Detect stale dependencies')
   const logs: string[] = []
-  const staleDeps = await detectStaleDeps(REPO_PATH, (msg) => logs.push(msg))
+  const { stale: staleDeps } = await detectStaleDeps(REPO_PATH, (msg) => logs.push(msg))
   const axiosDep = staleDeps.find((d) => d.name === 'axios')
   check('Detected axios as stale', !!axiosDep, axiosDep ? `${axiosDep.currentVersion} → ${axiosDep.latestVersion}` : undefined)
   check('Detected at least 1 stale dep', staleDeps.length > 0, `${staleDeps.length} dep(s)`)

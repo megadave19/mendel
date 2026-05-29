@@ -99,6 +99,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (detection silently reported "0 stale" — npm rate-limit swallowed; honesty + retry fix)**
+Re-scanned ta-vivo after the yarn/toolchain fixes → completed in ~20s, **0 deps / 0 issues / "DONE · no PR opened"** ("nothing happened?"). But the same repo found 3 stale deps earlier. My sandbox fixes don't touch detection, so it was environmental.
+- **Root cause:** `getLatestVersion` returned `null` on ANY failure, and `detectStaleDeps` did `if (!latest) continue` → a failed npm lookup was **silently treated as "not stale."** After many scans today, npm **rate-limited** the 32 anonymous version lookups → all returned null → "0 stale" → fast DONE. A robustness gap AND a §5b honesty gap ("checked & current" was indistinguishable from "couldn't check").
+- **Fix (lib/agent/phases/detect.ts):** `getLatestVersion` now returns a discriminated `{ok:true; version|null} | {ok:false}`, retries 429/5xx/network (3× backoff), and sends a `User-Agent` (cuts npm throttling). `detectStaleDeps` returns `{ stale, checked, failed }` + emits a summary. Exported `parseVersion`/`isSignificantlyBehind` for tests.
+- **Fix (runner):** if `checked===0 && failed>0` (every lookup failed) → scan **FAILS** with "Couldn't check staleness — rate limit, re-run in a minute" (not a misleading "DONE, nothing stale"). Partial failures append "(N unchecked)". Directly answers "nothing happened, just done?".
+- +7 tests (`tests/detect-stale.test.ts`: pure version logic + fetch-mocked 429-retry-success + persistent-fail-counted-as-failed). Fixed `scripts/gate-1c.ts` for the new return shape.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **319 passed** / 7 gated.
+- **For the user right now:** the ta-vivo "0 stale" was almost certainly npm rate-limiting from many rapid scans — **wait a minute and re-scan**; it'll now either find the stale deps or honestly say "couldn't check (rate limit)".
+
 **2026-05-29 (general guard — sandbox-readiness pre-flight + toolchain completion; root-causing the bug CLASS)**
 After the yarn fix, owner asked the right questions: *why* do bugs like this exist, why not caught on execa, are there more, and why didn't our pre-flight stop the wasted analysis. Answers + fixes:
 - **Why the class exists:** `detect.ts` could *select* a tool (yarn) the sandbox image didn't *contain*. Half-implemented: the code branch existed, the runtime support didn't. Never caught because **every test repo used npm/pnpm** — the yarn branch was effectively dead-tested. Classic §11b.1 "looks right, never run in a real container."
