@@ -1,6 +1,7 @@
 import EventEmitter from 'events'
 import path from 'path'
 import { mkdirSync, rmSync, readFileSync } from 'fs'
+import simpleGit from 'simple-git'
 import { cloneRepo, detectMonorepo, getRepoMeta, assessSubmitCapability } from '@/lib/github'
 import { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
@@ -174,6 +175,15 @@ export async function runScan(
     const authUrl = `https://${pat}@github.com/${owner}/${repo}.git`
     await cloneRepo(authUrl, repoPath)
 
+    // Capture the clean base commit so each dependency can be patched/verified/
+    // PR'd in ISOLATION from it (PR-hygiene fix). Without this, deps are patched
+    // sequentially in one working tree, so each PR branch leaks the previous
+    // deps' changes (PR #1237 on execa carried ava+c8+is-in-ci) AND each verify
+    // runs against the prior deps' (possibly broken) changes — inflating diffs
+    // and false Phase-B failures.
+    const git = simpleGit(repoPath)
+    const baseSha = (await git.revparse(['HEAD'])).trim()
+
     const monorepo = detectMonorepo(repoPath)
     if (monorepo.isMonorepo) {
       throw new Error(
@@ -237,6 +247,17 @@ export async function runScan(
       if (tokenEstimate.used > TOKEN_CAP) {
         log(`Token cap reached (${TOKEN_CAP}) — stopping`)
         break
+      }
+
+      // ISOLATION (PR-hygiene fix): reset the working tree to the clean base
+      // before each dep so this dep's patch, verification, AND PR contain ONLY
+      // its own change — never the previous deps'. Detached checkout of baseSha
+      // + clean of untracked (gitignored files like node_modules are preserved).
+      try {
+        await git.raw(['checkout', '-f', baseSha])
+        await git.raw(['clean', '-fd'])
+      } catch (resetErr) {
+        log(`(isolation) working-tree reset to base failed: ${String(resetErr).slice(0, 120)}`)
       }
 
       emit({ type: 'issue', dep: dep.name, currentVersion: dep.currentVersion, latestVersion: dep.latestVersion })

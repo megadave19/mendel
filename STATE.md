@@ -99,6 +99,13 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-29 (PR-hygiene fixes — surfaced auditing the real execa PRs #1237 etc.)**
+Audited the 3 live PRs Mendel opened on `sindresorhus/execa`. The dependency changes were REAL + correct (ava→8.0.1, c8→11.0.0, is-in-ci→2.0.0; not hallucinated) and honestly labeled low/medium-confidence Drafts. But two real defects:
+- **Bug 1 — PR cross-contamination.** Each PR's branch was cut from the *accumulated* working tree, so the is-in-ci PR (#1237) also contained ava+c8 bumps; verification also ran cumulatively (inflating false Phase-B failures). **Fix:** runner captures `baseSha` after clone and resets the working tree (`git checkout -f baseSha` + `clean -fd`) at the top of each dep iteration → each dep's patch/verify/PR is isolated. `simple-git` added to runner.
+- **Bug 2 — whitespace churn.** `bumpPackageJson` did `JSON.parse`→`JSON.stringify(pkg,null,2)` → reformatted the whole file (execa uses TABS → 103-line diff on a 1-line change, fails their lint) and hardcoded `^` (changed pinned deps). **Fix:** surgical raw-text replace of only the dep's version value, preserving indentation/key-order/range-operator; exact-key match (`is-in-ci` ≠ `is-in-ci-extra`); honest no-op when the dep isn't found. +5 unit tests (`tests/patch-manifest.test.ts`).
+- Verification: typecheck ✅, lint ✅, `pnpm test` ✅ **286 passed** / 7 gated. Bug 2 unit-tested; Bug 1 (git isolation) needs a live re-scan to confirm each PR is clean+isolated (close the old contaminated execa PRs first, then re-scan).
+- Checkpoint committed before these fixes (2 commits: docs(v2) + fix(agent) fork/preflight/honest-UI). dev.db left uncommitted by design.
+
 **2026-05-28 (bug fixes — fork support + false-success UI, surfaced testing sindresorhus/execa)**
 Owner scanned `sindresorhus/execa` (a repo they don't own). Result: 3 issues detected + scored (ava 48 low, c8 48 low, is-in-ci 60 medium), **but PRS=0** — yet the mascot showed "DRAFT PR OPENED / SUCCESS" and the phase subtitle read "draft pr opened." Two real defects:
 

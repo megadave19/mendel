@@ -39,26 +39,40 @@ function bumpPackageJson(
   originalContent: string,
   dep: StaleDep,
 ): FilePatch {
-  const pkg = JSON.parse(originalContent) as {
-    dependencies?: Record<string, string>
-    devDependencies?: Record<string, string>
+  // Surgical, formatting-preserving version bump. We deliberately do NOT
+  // JSON.parse + JSON.stringify: that re-serializes the WHOLE file at a fixed
+  // 2-space indent, so a repo using tabs (e.g. execa) gets every line rewritten
+  // — turning a 1-line change into a whole-file diff that fails the repo's lint
+  // and reads as AI slop. Instead we replace only this dep's version value(s)
+  // in the raw text, preserving indentation, key order, AND the original range
+  // operator (^, ~, >=, … — the old code hardcoded ^, silently changing pinned
+  // deps). Exact-key match so "is-in-ci" never matches "is-in-ci-extra".
+  const escaped = dep.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const entry = new RegExp(`("${escaped}"\\s*:\\s*")([^"]+)(")`, 'g')
+  let replaced = 0
+  const patched = originalContent.replace(entry, (_m, pre: string, spec: string, post: string) => {
+    replaced++
+    const prefix = (spec.match(/^[\^~>=<\s]*/) ?? [''])[0] // keep the original range operator
+    return `${pre}${prefix}${dep.latestVersion}${post}`
+  })
+
+  if (replaced === 0) {
+    // Dep wasn't found in package.json text (shouldn't happen — it was detected
+    // from here). Leave the file untouched and report honestly (§5b).
+    return {
+      filePath: 'package.json',
+      originalContent,
+      patchedContent: originalContent,
+      explanation: `No version entry found for ${dep.name} in package.json — left unchanged`,
+    }
   }
 
-  if (pkg.dependencies?.[dep.name]) {
-    pkg.dependencies[dep.name] = `^${dep.latestVersion}`
-  }
-  if (pkg.devDependencies?.[dep.name]) {
-    pkg.devDependencies[dep.name] = `^${dep.latestVersion}`
-  }
-
-  const patched = JSON.stringify(pkg, null, 2) + '\n'
   writeFileSync(fullPath, patched, 'utf-8')
-
   return {
     filePath: 'package.json',
     originalContent,
     patchedContent: patched,
-    explanation: `Bumped ${dep.name} from ${dep.currentVersion} to ^${dep.latestVersion}`,
+    explanation: `Bumped ${dep.name} ${dep.currentVersion} → ${dep.latestVersion} (version-only; formatting preserved)`,
   }
 }
 
