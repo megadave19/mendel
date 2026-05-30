@@ -774,6 +774,24 @@ Dev review flagged four areas where LLMs commonly hallucinate plausible-looking 
 - If LLM-generated code *looks* obviously correct but doesn't work, the issue is usually a hallucinated API method or argument shape. Verify against current official docs, not training data.
 - When verification fails 3 times in a row, stop and write a `STATE.md` note. Don't keep retrying the same approach.
 
+## 11c. Data-First Debugging (when a bug doesn't go away)
+
+*Added 2026-05-31 after a 4-round debugging marathon where every round formed a hypothesis BEFORE reading the failure data the system had already recorded. Each "fix" was a real adjacent bug — none was the cause. Final cause (a shell-quoting bug on cache hits) became obvious in one DB query the moment the failure output was persisted.*
+
+These rules apply when an EXISTING feature misbehaves (distinct from §11b which is about building new code carefully):
+
+1. **Read the persisted record FIRST.** Before forming any hypothesis, query the DB: `sqlite3 prisma/prisma/dev.db "SELECT status, errorMessage, … FROM Scan WHERE …"` and the related child rows (`Issue.verification`, etc.). The system has already written down what happened — read it before guessing. No code changes until you have.
+
+2. **Reproductions must mirror the failing state, exactly.** If "I tried it manually and it works" disagrees with the user's repro, *your repro is wrong* — find the difference. Cache volumes empty vs populated, workspace path, patched-vs-original files, env vars, image tag, dev-server reload state. "Works in my isolated test" ≠ "works in production." (This is the rule I broke 3 times: my Phase-A repros used fresh volumes; the bug only fires on populated cache.)
+
+3. **Persist failure data — never leave it in-memory only.** Any failure mode visible to the agent in-memory (stdout, stderr, error object) but invisible after the run is a PRODUCT bug. If it only flows through SSE / console.log / a transient event, *also* persist it (DB column, JSONB blob, logs/ file). Cost: bytes. Cost of debugging blind: hours, multiplied by every future investigation. (Concretely: `Issue.verification` now stores `{passed:false, output:<last 1500 chars of phaseA stdout+stderr>}` because we paid this cost 4 times.)
+
+4. **Two-fix rule: STOP and instrument.** If the same symptom persists after 2 attempted fixes, do NOT propose a 3rd. Instead, add instrumentation to capture what the system is actually doing, re-run *once*, and let the data drive the fix. Each "fix" without data adds surface area and obscures the real cause.
+
+5. **A green test suite is not proof.** All 4 rounds shipped with `pnpm test ✅` — every fix was real, none was the cause. Unit tests verify what you THOUGHT you tested; they say nothing about the bug you missed. Live-state diagnosis (DB + real-container run with the same conditions as the user) is the only proof.
+
+If you find yourself proposing a 2nd theory without having read the persisted record: STOP, write `STATE.md` note, query the DB.
+
 ## 12. Kill Criteria (Project Health)
 
 If any of these trigger, stop building features and address:

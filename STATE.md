@@ -99,6 +99,14 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-31 (CLAUDE.md §11c — Data-First Debugging — codifying the 4-round lesson)**
+Owner asked why the bug took 4 rounds despite CLAUDE.md's extensive rules. Honest root cause = my process, not Mendel's code: I theorized 4 times before reading what the system had recorded. The first 3 fixes were real adjacent bugs; none was the cause. Added **CLAUDE.md §11c** as a new section (distinct from §11b "areas to be careful in" — this is about debugging *existing* bugs):
+1. Read the persisted record FIRST (no code changes until you've queried the DB / errorMessage / verification blob).
+2. Reproductions must mirror the failing state exactly (mine used fresh cache volumes; bug only fires on populated cache).
+3. Persist failure data — never leave it in-memory only (SSE + console.log are NOT persistence). `Issue.verification` now carries the actual stdout/stderr on failure.
+4. **Two-fix rule:** if the same symptom persists after 2 attempted fixes, STOP and instrument — do not propose a 3rd.
+5. A green test suite is not proof — every round shipped with `pnpm test ✅`. Live-state diagnosis is the only proof.
+
 **2026-05-31 (REAL root cause — shell-quoting bug on cache-hit; surfaced by the persisted output)**
 Persisted Phase-A output → DB → instant diagnosis. The real failure, verbatim:
 ```
