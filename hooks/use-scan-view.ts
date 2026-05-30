@@ -64,6 +64,17 @@ function useRealScanView(id: string): MockScanState {
    * total duration.
    */
   const [persistedElapsedMs, setPersistedElapsedMs] = useState<number | null>(null)
+  /**
+   * Persisted failure surface (2026-05-29 fix). The runner records
+   * `status: 'failed' | 'cancelled'` + `errorMessage` on the Scan row, but the
+   * page used to ignore both and hard-code 'DONE' for playback — so a scan that
+   * crashed at `ensureSandboxImage` (docker build EEXIST) rendered as
+   * "scan complete · no PR opened" with Bones idle. False success. Now: if
+   * status is failed/cancelled, render phase = 'ERROR' + show the real error.
+   */
+  const [persistedFailure, setPersistedFailure] = useState<{ failed: boolean; cancelled: boolean; errorMessage: string | null }>({
+    failed: false, cancelled: false, errorMessage: null,
+  })
 
   // Derive the view model from the streamed entries.
   const derived = useMemo(() => {
@@ -121,7 +132,7 @@ function useRealScanView(id: string): MockScanState {
         if (r.status === 404) notFound()
         return r.json()
       })
-      .then((data: { issues?: IssueVM[]; deps?: string[]; startedAt?: string; completedAt?: string | null }) => {
+      .then((data: { issues?: IssueVM[]; deps?: string[]; startedAt?: string; completedAt?: string | null; status?: string; errorMessage?: string | null }) => {
         if (cancelled) return
         if (Array.isArray(data.issues) && data.issues.length > 0) setEnriched(data.issues)
         if (Array.isArray(data.deps) && data.deps.length > 0) {
@@ -130,6 +141,13 @@ function useRealScanView(id: string): MockScanState {
         if (data.startedAt && data.completedAt) {
           const ms = new Date(data.completedAt).getTime() - new Date(data.startedAt).getTime()
           if (Number.isFinite(ms) && ms > 0) setPersistedElapsedMs(ms)
+        }
+        if (data.status === 'failed' || data.status === 'cancelled') {
+          setPersistedFailure({
+            failed: data.status === 'failed',
+            cancelled: data.status === 'cancelled',
+            errorMessage: data.errorMessage ?? null,
+          })
         }
       })
       .catch(() => {})
@@ -146,26 +164,45 @@ function useRealScanView(id: string): MockScanState {
   // as static playback instead of the dead-live-feed noise (DESIGN.md §10).
   const isPlayback = done && derived.issues.length === 0
 
+  // Honest playback phase: a persisted failed/cancelled scan must render ERROR,
+  // not DONE. Previously the hook hardcoded DONE → a docker-build crash showed
+  // as "scan complete · no PR opened" with Bones idle (false success).
+  const playbackPhase: Phase = persistedFailure.failed || persistedFailure.cancelled ? 'ERROR' : 'DONE'
+
   let lines = derived.lines
   if (isPlayback) {
     // Fix B2: -1 sentinel = "no timing available" → TerminalLog renders em-dash
     // instead of misleading `00.00` timestamps on every playback row.
-    lines = [
-      {
-        id: 'pb-head',
-        stage: 'DONE' as Phase,
-        text: issues.length > 0
-          ? `Playback — scan complete. ${issues.length} issue(s) found.`
-          : 'Playback — scan complete. No saved issue detail.',
-        t: -1,
-      },
-      ...issues.map((iss, i) => ({
-        id: `pb-${i}`,
-        stage: 'DONE' as Phase,
-        text: `${iss.dep} ${iss.currentVersion} → ${iss.latestVersion}${iss.prUrl ? ' · Draft PR opened' : ''}`,
-        t: -1,
-      })),
-    ]
+    if (playbackPhase === 'ERROR') {
+      const head = persistedFailure.cancelled
+        ? 'Playback — scan was CANCELLED.'
+        : 'Playback — scan FAILED.'
+      const errLines = (persistedFailure.errorMessage ?? 'No saved error message.')
+        .split('\n')
+        .filter((l) => l.trim().length > 0)
+        .slice(0, 20) // cap the rendered tail
+      lines = [
+        { id: 'pb-head', stage: 'ERROR' as Phase, text: head, t: -1 },
+        ...errLines.map((text, i) => ({ id: `pb-err-${i}`, stage: 'ERROR' as Phase, text, t: -1 })),
+      ]
+    } else {
+      lines = [
+        {
+          id: 'pb-head',
+          stage: 'DONE' as Phase,
+          text: issues.length > 0
+            ? `Playback — scan complete. ${issues.length} issue(s) found.`
+            : 'Playback — scan complete. No saved issue detail.',
+          t: -1,
+        },
+        ...issues.map((iss, i) => ({
+          id: `pb-${i}`,
+          stage: 'DONE' as Phase,
+          text: `${iss.dep} ${iss.currentVersion} → ${iss.latestVersion}${iss.prUrl ? ' · Draft PR opened' : ''}`,
+          t: -1,
+        })),
+      ]
+    }
   }
 
   // Fix B1: prefer the persisted (completed - started) duration on a finished
@@ -173,7 +210,7 @@ function useRealScanView(id: string): MockScanState {
   const elapsedMs = (done && persistedElapsedMs != null) ? persistedElapsedMs : derived.elapsedMs
 
   return {
-    phase: isPlayback ? 'DONE' : derived.phase,
+    phase: isPlayback ? playbackPhase : derived.phase,
     lines,
     activeNodeId: isPlayback ? null : derived.activeNodeId,
     elapsedMs,

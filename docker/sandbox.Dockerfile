@@ -1,11 +1,14 @@
 FROM node:22-alpine
 
 # Install pnpm + yarn directly — bypasses corepack version auto-detection.
+# `--force` is required: node:22-alpine pre-installs corepack shims at
+# /usr/local/bin/yarn (and friends), so a plain `npm install -g yarn` fails
+# with EEXIST. The flag tells npm to overwrite the shim with the pinned binary.
 # yarn is REQUIRED: yarn-lockfile repos (e.g. ta-vivo) detect `yarn install`,
 # and without the binary Phase A failed instantly ("yarn: not found") → every
 # yarn repo silently failed verification → confidence capped → no PR. (npm
 # ships with the node base image; pnpm + yarn cover the other two managers.)
-RUN npm install -g pnpm@9.0.0 yarn@1.22.22
+RUN npm install -g --force pnpm@9.0.0 yarn@1.22.22
 
 # - curl: egress-blocking verification in gate tests
 # - iptables: v1.5 W#8 default-deny allowlist on Phase A (CLAUDE.md §5 Rule 12)
