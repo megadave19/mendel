@@ -86,8 +86,15 @@ export function persistIssueData(args: {
    * (a missing score must NOT be misread as "high confidence").
    */
   confidenceScore?: ConfidenceScore | null
+  /**
+   * Last ~1500 chars of Phase A (install) stdout/stderr. Persisted only when
+   * verification failed, so the user (and post-hoc debugging) can see WHY the
+   * install failed — instead of just a `passed:false` boolean. Without this,
+   * "Phase A failed" was a black box even in the DB.
+   */
+  phaseAOutput?: string
 }) {
-  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore } = args
+  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput } = args
 
   // Evidence: prefer changelog citations; if none, fall back to npm link.
   // Once Workstream #2 (confidence scoring) lands, semantic-diff symbols can
@@ -131,7 +138,11 @@ export function persistIssueData(args: {
     confidence: JSON.stringify(confidenceBlob),
     diagnosis: JSON.stringify(diagnosisBlob),
     patch: JSON.stringify({ filePath: patches[0]?.filePath ?? 'package.json', diff: buildDiff(dep, patches) }),
-    verification: JSON.stringify({ passed: verificationPassed }),
+    verification: JSON.stringify(
+      verificationPassed
+        ? { passed: true }
+        : { passed: false, output: (phaseAOutput ?? '').slice(-1500) },
+    ),
     notAnalyzed: JSON.stringify(notAnalyzed),
     prUrl: prUrl ?? null,
     status: prUrl ? 'pr-opened' : 'diagnosed',

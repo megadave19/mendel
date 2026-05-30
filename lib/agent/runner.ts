@@ -611,8 +611,13 @@ export async function runScan(
       // Store the finding so permalinks + playback (S5/S6/S7) render real data.
       // persistIssueData enforces §5b: confidence framing + Not-Analyzed.
       try {
+        // Concat stdout + stderr because the install runs with 2>&1; some
+        // exit paths populate one and not the other.
+        const phaseAOutput = !phaseA.success
+          ? `${phaseA.stdout ?? ''}\n${phaseA.stderr ?? ''}`.trim()
+          : undefined
         await db.issue.create({
-          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore }),
+          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput }),
         })
       } catch (persistErr) {
         log(`Issue persist failed: ${String(persistErr)}`)
