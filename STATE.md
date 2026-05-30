@@ -99,6 +99,19 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-31 (REAL root cause — shell-quoting bug on cache-hit; surfaced by the persisted output)**
+Persisted Phase-A output → DB → instant diagnosis. The real failure, verbatim:
+```
+/bin/sh: -c: line 0: syntax error near unexpected token `('
+sh -c "echo "CACHE_HIT: skipping install (cache volume X already populated)""
+```
+- **Bug:** `lib/sandbox/executor.ts` built `sh -c "${shellCommand}"` by string interpolation. On a cache hit, `shellCommand` was `echo "CACHE_HIT: skipping install (cache volume X already populated)"` — the inner `"…"` closed the outer `"…"` early, then `(` became an unquoted shell metachar → syntax error → Phase A failed BEFORE `yarn install` ever ran. Phase B has the same `-c "${phaseCmd}"` pattern — same risk.
+- **Why no earlier round caught it:** all my manual reproductions used fresh/empty cache volumes → `cacheHit=false` → no echo → no parens → no bug. The very first ta-vivo scan succeeded (cache empty → install ran → cache populated → 3 PRs opened). Every scan after that hit the populated cache → quoting bug → silent fail. Lesson confirmed: **persist failure outputs; don't rely on SSE-only emission**.
+- **Fix:** `shArg(s)` — single-quote the whole arg + escape embedded `'` via the standard `'\''` trick. Applied to both Phase A and Phase B `sh -c` invocations. +4 regression tests round-tripping every shell metachar through real `execSync('sh -c …')`. Verified against a real `docker run`: OLD = syntax error, NEW = echo runs correctly.
+- **Long-term follow-up (noted, not done):** the underlying `execAsync(cmd-string)` is itself a shell-injection surface. Proper fix is `execFile('docker', [...args])` with an argument array — no shell at all. Tracked as a TODO in `executor.ts`; shArg is the minimal patch to unblock.
+- **Process lesson** (mine to internalize): I theorized 4 times (yarn-missing, docker-EEXIST, npm-rate-limit, UI-false-DONE). The first 3 were real adjacent bugs I fixed, but NONE explained the current symptom. The 4th was wrong. Each instrumented diagnosis (DB query, persisted output) immediately surfaced the truth. Rule: **when a symptom persists across "fixes," instrument and read the data BEFORE proposing more fixes.**
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **323 passed** (+4 shArg regression tests) / 7 gated.
+
 **2026-05-31 (Phase A failing per-dep on ta-vivo; persisted install output so next scan tells us WHY)**
 4th re-scan of ta-vivo: scan COMPLETED honestly (`status='completed'`, 3 issues persisted, `verification.passed=false` for each, errorMessage empty). UI honestly shows "no PR opened" (no false success). But every dep's Phase A install fails — and I have no idea why. Reproduced Mendel's EXACT Phase A docker invocation manually (v1.5.2 image, iptables allowlist, empty node_modules volume, /tmp clone of ta-vivo, even with the bumped @emailjs/browser ^4.4.1 patch applied) → **`yarn install` succeeds in 27s, exit 0**. So the install works manually. Something else fails in Mendel's run, and I cannot diagnose because **`phaseA.stdout` was emitted via SSE but never persisted** — by the time the scan ends, the actual error is gone.
 - **No more guessing.** Added persistence: `Issue.verification` now stores `{ passed:false, output: <last 1500 chars of phaseA stdout+stderr> }` on failure. Genuinely useful product feature (the user can see WHY a PR didn't open) AND gives us the diagnostic we've been missing for 4 rounds.

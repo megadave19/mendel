@@ -13,6 +13,30 @@ import {
 
 const execAsync = promisify(exec)
 
+/**
+ * Wrap an arbitrary string for use as a single argument to `/bin/sh -c`.
+ * Single-quotes everything (so `"`, `(`, `$`, `;`, … are all literal) and
+ * escapes any embedded `'` via the standard `'\''` trick.
+ *
+ * 2026-05-31 — this exists because the CACHE_HIT echo path
+ *   sh -c "echo "CACHE_HIT: skipping install (cache volume X already populated)"
+ * the inner `"…"` closed the outer `"…"` early, then `(` became an unquoted
+ * shell metachar → `/bin/sh: -c: line 0: syntax error near unexpected token '('`
+ * → Phase A failed BEFORE the install command ran. Every cache-hit scan
+ * silently failed verification → confidence capped → no PR. (First scan
+ * worked because cache was empty → no echo → no parens.)
+ */
+export function shArg(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+// TODO (follow-up): the docker invocations below use `execAsync(cmd-string)`
+// which goes through /bin/sh -c — every interpolation is a potential shell-
+// injection surface. shArg defangs the known fields (shellCommand / phaseCmd),
+// but the proper fix is to swap to `execFile('docker', [...args])` with an
+// args array so no shell is involved at all. Tracked but deferred — the
+// immediate bug (CACHE_HIT echo + parens) is fixed by shArg.
+
 // Tag bumps force a one-time rebuild on existing dev machines (ensureSandboxImage
 // skips the build when the tag already exists). v1.5 W#8 added iptables; v1.5.1
 // added `yarn`; v1.5.2 (2026-05-29) adds `git` + a native-build toolchain
@@ -176,7 +200,7 @@ export async function runPhaseA(config: SandboxConfig): Promise<PhaseAResult> {
     `--volume="${vol}:/repo/node_modules"`,
     '--workdir=/repo',
     IMAGE_NAME,
-    `sh -c "${shellCommand}"`,
+    `sh -c ${shArg(shellCommand)}`,
   ].join(' ')
 
   try {
@@ -253,7 +277,7 @@ export async function runPhaseB(
     `--volume="${vol}:/repo/node_modules"`,
     '--workdir=/repo',
     IMAGE_NAME,
-    `-c "${phaseCmd}"`,
+    `-c ${shArg(phaseCmd)}`,
   ].join(' ')
 
   try {
