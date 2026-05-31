@@ -7,12 +7,17 @@
  */
 
 import { motion } from 'framer-motion'
-import { STAGES, type Phase } from './types'
+import { STAGES, STAGES_NO_SMOKE, type Phase } from './types'
 import { StatusPill } from './StatusPill'
 
 interface StageLaneProps {
   /** Current phase. Stages at-or-before it read "done"; current reads "active". */
   phase: Phase
+  /**
+   * v2.0 / F20 — true when the scan opted in to Phase C. When false (or
+   * omitted), the SMOKE lane is hidden so v1.5 scans render unchanged.
+   */
+  smokeEnabled?: boolean
 }
 
 const ORDER: Record<Phase, number> = {
@@ -20,18 +25,31 @@ const ORDER: Record<Phase, number> = {
   DIAGNOSE: 1,
   PATCH: 2,
   VERIFY: 3,
+  SMOKE: 4,
+  DONE: 5,
+  ERROR: 5,
+}
+
+const ORDER_NO_SMOKE: Record<Phase, number> = {
+  SCAN: 0,
+  DIAGNOSE: 1,
+  PATCH: 2,
+  VERIFY: 3,
+  SMOKE: 4, // unreachable in this map's mode; here for type completeness
   DONE: 4,
   ERROR: 4,
 }
 
-export function StageLane({ phase }: StageLaneProps) {
-  const current = ORDER[phase]
+export function StageLane({ phase, smokeEnabled = false }: StageLaneProps) {
+  const stages = smokeEnabled ? STAGES : STAGES_NO_SMOKE
+  const order = smokeEnabled ? ORDER : ORDER_NO_SMOKE
+  const current = order[phase]
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`,
+        gridTemplateColumns: `repeat(${stages.length}, 1fr)`,
         gap: '0.5rem',
         position: 'relative',
       }}
@@ -49,7 +67,7 @@ export function StageLane({ phase }: StageLaneProps) {
           zIndex: 0,
         }}
       />
-      {STAGES.map((stage, i) => {
+      {stages.map((stage, i) => {
         const isActive = i === current
         const isDone = i < current
         return (

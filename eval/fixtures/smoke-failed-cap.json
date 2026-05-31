@@ -1,0 +1,38 @@
+{
+  "id": "smoke-failed-cap",
+  "packageName": "synthetic-smoke-cap",
+  "fromVersion": "9.0.0",
+  "toVersion": "10.0.0",
+  "description": "v2.0 / F20 case: signals are strong (both agree on removedThing → would normally score 90) AND verification (typecheck/test) passed. BUT Phase C (smoke) was attempted and the app did NOT boot. Per the smoke cap (mirrors VERIFY_FAIL_CAP), overall is hard-capped at 50 → bucket low. Pins the new smokeCapped path so a future change can't silently bypass it (§5b rule 7 extended to action: a non-booting patch is honest evidence the upgrade broke the app — never inflated to ship a merge).",
+  "mode": "offline",
+  "tags": ["self-test", "smoke"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "removedThing",
+        "changeType": "removed",
+        "description": "removedThing() is gone.",
+        "sourceUrl": "https://example.com/changelog"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": ["removedThing"],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["package.json", "src/foo.ts"],
+    "verificationPassed": true,
+    "smokePassed": false
+  },
+  "expected": {
+    "bucket": "low",
+    "overall": { "min": 50, "max": 50 },
+    "perSymbolHits": [
+      { "symbol": "removedThing", "shouldDetect": true }
+    ]
+  }
+}

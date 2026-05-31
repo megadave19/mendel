@@ -74,7 +74,7 @@ export type AgentEvent =
   | { type: 'phase'; phase: AgentPhase }
   | { type: 'log'; message: string }
   | { type: 'issue'; dep: string; currentVersion: string; latestVersion: string }
-  | { type: 'verify'; phase: 'A' | 'B'; success: boolean; output: string }
+  | { type: 'verify'; phase: 'A' | 'B' | 'C'; success: boolean; output: string }
   | { type: 'pr'; url: string; branch: string }
   | { type: 'done'; summary: string }
   | { type: 'error'; message: string }
@@ -120,6 +120,13 @@ export interface RunScanOptions {
    * or a CONTRIBUTING "no dependency PRs" policy) get no PR regardless.
    */
   externalContributionAck?: boolean
+  /**
+   * v2.0 / F20 — Phase C (smoke) opt-in. When `true`, after Phase B passes
+   * the runner attempts to BOOT the patched app and captures whether it came
+   * up. Result feeds the confidence cap (smoke failure → cap at 50). When
+   * `false`/omitted → no smoke, behavior identical to v1.5.
+   */
+  smokeTest?: boolean
 }
 
 export async function runScan(
@@ -494,6 +501,11 @@ export async function runScan(
       })
 
       let verificationPassed = false
+      // v2.0 / F20 — Phase C smoke outcome. `null` = not attempted (legacy
+      // path or smoke disabled). `true`/`false` = smoke ran with a verdict.
+      // calculateConfidence honors `null` by NOT applying the smoke cap —
+      // existing scans behave identically to v1.5.
+      let smokePassed: boolean | null = null
 
       if (phaseA.success) {
         log('Running Phase B — typecheck in --network=none sandbox...')
@@ -509,6 +521,37 @@ export async function runScan(
           output: phaseB.stdout.slice(-500),
         })
         verificationPassed = phaseB.typecheckPassed
+
+        // v2.0 / F20 — Phase C runs ONLY when Phase B passed (no point booting
+        // a patch we know fails typecheck) AND smoke is enabled in opts. The
+        // post-Phase-A install volume is still valid; we reuse it before
+        // teardown. Phase C runs --network=none (CLAUDE.md §5 rule 16) — if
+        // an app can't boot offline, we report it honestly, not by opening
+        // the network.
+        if (verificationPassed && options.smokeTest) {
+          log('Running Phase C — smoke-test (boot patched app, --network=none)...')
+          const phaseC = await sandbox.runSmoke(
+            { repoPath, scanId: verifyScanId, packageManager: pm, smokeTest: { enabled: true } },
+            vol,
+          )
+          emit({
+            type: 'verify',
+            phase: 'C',
+            success: phaseC.booted,
+            output: phaseC.logTail.slice(-500),
+          })
+          if (phaseC.attempted) {
+            smokePassed = phaseC.booted
+            log(
+              `Phase C ${phaseC.booted ? '✓ booted' : '✕ did not boot'} — ${phaseC.reason}` +
+                (phaseC.command ? ` (cmd: ${phaseC.command})` : ''),
+            )
+          } else {
+            // attempted=false → not a cap, not a pass. UI shows amber.
+            log(`Phase C skipped — ${phaseC.reason}`)
+          }
+        }
+
         await sandbox.teardown(vol)
 
         if (!phaseB.typecheckPassed) {
@@ -542,10 +585,16 @@ export async function runScan(
         semanticDiff,
         patchedFilePaths: patches.map((p) => p.filePath),
         verificationPassed,
+        smokePassed,
       })
+      // v2.0 / F20 — surface both possible caps. Either alone or together is
+      // honest; calculateConfidence already enforces the cap math.
+      const capNotes: string[] = []
+      if (confidenceScore.verificationCapped) capNotes.push('capped by verification failure')
+      if (confidenceScore.smokeCapped) capNotes.push('capped by smoke (boot) failure')
       log(
         `Confidence: ${confidenceScore.overall}/100 (${confidenceScore.bucket})` +
-          (confidenceScore.verificationCapped ? ' — capped by verification failure' : '') +
+          (capNotes.length > 0 ? ` — ${capNotes.join(' + ')}` : '') +
           ` · ${confidenceScore.perBreakingChange.length} symbol${confidenceScore.perBreakingChange.length === 1 ? '' : 's'} scored · ${confidenceScore.analysisCoverage.analysisTier} coverage ${confidenceScore.analysisCoverage.percentCovered}%`,
       )
 

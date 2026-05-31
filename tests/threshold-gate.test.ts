@@ -31,6 +31,7 @@ function makeScore(overall: number, bucket: ConfidenceScore['bucket'], verificat
       analysisTier: 'dts', notAnalyzed: [],
     },
     verificationCapped,
+    smokeCapped: false,
   }
 }
 

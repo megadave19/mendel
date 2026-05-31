@@ -23,8 +23,9 @@ const mocks = vi.hoisted(() => ({
   mockRunPhaseA: vi.fn(),
   mockRunPhaseB: vi.fn(),
   mockCleanup: vi.fn(),
+  mockRunPhaseC: vi.fn(),
 }))
-const { mockEnsure, mockCheckReadiness, mockRunPhaseA, mockRunPhaseB, mockCleanup } = mocks
+const { mockEnsure, mockCheckReadiness, mockRunPhaseA, mockRunPhaseB, mockCleanup, mockRunPhaseC } = mocks
 
 vi.mock('@/lib/sandbox/executor', () => ({
   ensureSandboxImage: mocks.mockEnsure,
@@ -39,6 +40,11 @@ vi.mock('@/lib/sandbox/executor', () => ({
   IMAGE_NAME: 'mendel-sandbox:test',
   shArg: (s: string) => `'${s}'`,
   verifyEgressBlocked: vi.fn(),
+}))
+vi.mock('@/lib/sandbox/smoke', () => ({
+  runPhaseC: mocks.mockRunPhaseC,
+  // detectBootCommand / detectReadySignal / etc. don't need a mock — the
+  // provider doesn't import them; they have their own unit tests.
 }))
 
 import {
@@ -60,6 +66,7 @@ beforeEach(() => {
   mockRunPhaseA.mockReset()
   mockRunPhaseB.mockReset()
   mockCleanup.mockReset()
+  mockRunPhaseC.mockReset()
   __resetSandboxProviderForTests()
 })
 
@@ -109,6 +116,20 @@ describe('LocalDockerProvider — delegates every method to the executor', () =>
     const out = await new LocalDockerProvider().teardown('mendel-nm-scan-x')
     expect(mockCleanup).toHaveBeenCalledWith('mendel-nm-scan-x')
     expect(out).toBe(true)
+  })
+
+  it('runSmoke(config, vol) → runPhaseC(config, vol), passes BOTH args (F20)', async () => {
+    const fake = {
+      phase: 'C', success: true, attempted: true, booted: true,
+      reason: 'ready-pattern-matched', command: 'pnpm run start',
+      exitCode: 0, stdout: 'Listening on port 3000', stderr: '',
+      logTail: 'Listening on port 3000', durationMs: 1234, timedOut: false,
+    }
+    mockRunPhaseC.mockResolvedValue(fake)
+    const cfg = { ...SAMPLE_CONFIG, smokeTest: { enabled: true } }
+    const out = await new LocalDockerProvider().runSmoke(cfg, 'mendel-nm-scan-x')
+    expect(mockRunPhaseC).toHaveBeenCalledWith(cfg, 'mendel-nm-scan-x')
+    expect(out).toBe(fake)
   })
 })
 

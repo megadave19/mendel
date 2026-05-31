@@ -127,6 +127,7 @@ describe('issue-vm: persist → map round-trip', () => {
         analysisTier: 'dts' as const, notAnalyzed: [],
       },
       verificationCapped: false,
+      smokeCapped: false,
     }
     const data = persistIssueData({
       scanId: 'scan-1', dep, breakingChanges, diagnosis, patches,
@@ -177,6 +178,7 @@ describe('issue-vm: persist → map round-trip', () => {
         analysisTier: 'dts' as const, notAnalyzed: [],
       },
       verificationCapped: false,
+      smokeCapped: false,
     }
     const data = persistIssueData({
       scanId: 'scan-1', dep, breakingChanges, diagnosis, patches,

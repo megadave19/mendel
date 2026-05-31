@@ -5,10 +5,17 @@
 
 import type { MascotPose } from '@/components/BonesMascot'
 
-/** The four work stages shown in the StageLane (DESIGN.md §11 S4). */
-export type Stage = 'SCAN' | 'DIAGNOSE' | 'PATCH' | 'VERIFY'
+/**
+ * The work stages shown in the StageLane (DESIGN.md §11 S4).
+ * v2.0 / F20: 5th lane `SMOKE` added — after VERIFY, before DONE. The lane
+ * only renders when the scan actually attempts a smoke (opt-in); on a scan
+ * that didn't smoke, the lane is hidden so v1.5 visuals are unchanged.
+ */
+export type Stage = 'SCAN' | 'DIAGNOSE' | 'PATCH' | 'VERIFY' | 'SMOKE'
 
-export const STAGES: Stage[] = ['SCAN', 'DIAGNOSE', 'PATCH', 'VERIFY']
+export const STAGES: Stage[] = ['SCAN', 'DIAGNOSE', 'PATCH', 'VERIFY', 'SMOKE']
+/** Sub-set without SMOKE — for scans that didn't opt in. */
+export const STAGES_NO_SMOKE: Stage[] = ['SCAN', 'DIAGNOSE', 'PATCH', 'VERIFY']
 
 /** Lifecycle phase the console can be in. `done` and `error` are terminal. */
 export type Phase = Stage | 'DONE' | 'ERROR'
@@ -19,6 +26,9 @@ export const PHASE_TO_POSE: Record<Phase, MascotPose> = {
   DIAGNOSE: 'thinking',
   PATCH: 'patching',
   VERIFY: 'verifying',
+  // v2.0 / F20 — DESIGN.md §11b reuses the 'verifying' pose during smoke;
+  // no new mascot pose needed (still "checking the patch").
+  SMOKE: 'verifying',
   DONE: 'success',
   ERROR: 'error',
 }

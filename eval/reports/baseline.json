@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-05-31T13:46:33.666Z",
+  "generatedAt": "2026-05-31T14:10:34.014Z",
   "release": {
-    "label": "v2.0-baseline",
-    "gitCommit": "80fbc7a5f3dc4aaf3f1c641c338325510810b862"
+    "label": "v2.0-with-F20",
+    "gitCommit": "2ab45de5b02902024c9a6c1534af8d91222999c3"
   },
   "totals": {
-    "fixtures": 6,
-    "passed": 6,
+    "fixtures": 7,
+    "passed": 7,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -25,7 +25,7 @@
     "low": {
       "high": 0,
       "medium": 0,
-      "low": 2
+      "low": 3
     }
   },
   "fixtures": [
@@ -56,7 +56,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 10,
+      "durationMs": 8,
       "failures": []
     },
     {
@@ -98,6 +98,30 @@
       "perSymbol": [
         {
           "symbol": "legacyHelper",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "smoke-failed-cap",
+      "packageName": "synthetic-smoke-cap",
+      "fromVersion": "9.0.0",
+      "toVersion": "10.0.0",
+      "observedBucket": "low",
+      "observedOverall": 50,
+      "expectedBucket": "low",
+      "expectedOverallMin": 50,
+      "expectedOverallMax": 50,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "removedThing",
           "expected": true,
           "observed": true,
           "hit": true

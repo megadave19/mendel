@@ -52,6 +52,12 @@ export const OfflineFixtureInputSchema = z.object({
   semanticDiff: SemanticDiffSchema.nullable(),
   patchedFilePaths: z.array(z.string().min(1)),
   verificationPassed: z.boolean(),
+  /**
+   * v2.0 / F20 — Phase C (smoke) outcome. Optional + nullable to keep v1.5-
+   * shaped fixtures valid: omitted/null = smoke not attempted (no cap),
+   * matching CalculateConfidenceInput's contract.
+   */
+  smokePassed: z.boolean().nullable().optional(),
 })
 export type OfflineFixtureInput = z.infer<typeof OfflineFixtureInputSchema>
 

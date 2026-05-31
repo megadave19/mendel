@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-05-31
-> **Current phase:** **v2.0 IN PROGRESS** — F19 eval bench + SandboxProvider refactor landed. Next: **F20 Phase C smoke-test** (hard prereq for v2.3 auto-merge).
+> **Current phase:** **v2.0 ENGINEERING COMPLETE** — F19 eval bench + SandboxProvider refactor + F20 Phase C smoke-test all landed. Pending: persist `smokeRequested` on Scan + thread `smokeEnabled` into StageLane (small visual polish). Then v2.1.
 
 ---
 
@@ -109,6 +109,21 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-31 (v2.0 / F20 Phase C Smoke-Test — boot verification, the hard prereq for auto-merge)**
+Third v2.0 piece. Raises verification from "tests pass" to "the app still boots." Hard prereq for v2.3 auto-merge per CLAUDE.md §5c rule 4: "Tests AND smoke pass — F20 is a hard dependency of F24."
+- **`lib/sandbox/types.ts`** — `SmokeConfig` (enabled, command?, readyPattern?, timeoutMs?) + `PhaseCResult` extends `SandboxPhaseResult`. Honest-by-construction reasons: `ready-pattern-matched | clean-exit | crashed-non-zero-exit | timed-out | no-boot-command-detected | smoke-disabled`. `SandboxConfig.smokeTest` is opt-in; legacy callers behave identically.
+- **`lib/sandbox/smoke.ts`** — `detectBootCommand` (priority: scripts.start → serve → dev → bin → main; deliberately NOT test/build/lint; returns null when nothing detectable). `detectReadySignal` (caller-supplied pattern OR a default set: "listening on", "ready at", "server started", etc.). `resolvePhaseCReason` — pure truth table mapping (timedOut, exitCode, stdout, readyPattern) → (booted, reason). `buildPhaseCDockerCommand` — locks `--network=none` (CLAUDE.md §5 rule 16), `--memory=2g`, `--user=node`, `--rm`, shArg-quoted boot command. `runPhaseC` — 90s hard timeout cap, returns `attempted=false` when smoke is disabled or no boot command detected (NEVER fake-greens).
+- **`SandboxProvider`** — gains `runSmoke(config, vol)`. `LocalDockerProvider` delegates to `smoke.runPhaseC`. v3 hosted providers will plug into the same seam.
+- **`lib/agent/confidence/score.ts`** — `CalculateConfidenceInput.smokePassed?: boolean | null` (null = not attempted, no cap; true = booted; false = boot failed → caps overall at 50, same as VERIFY_FAIL_CAP). `ConfidenceScoreSchema` adds `smokeCapped: boolean` (Zod `.default(false)` preserves backward compat for old DB blobs).
+- **`lib/agent/runner.ts`** — `RunScanOptions.smokeTest?: boolean`. After Phase B passes AND opts.smokeTest, the runner calls `sandbox.runSmoke(...)` and threads the outcome into `calculateConfidence`. The log surfaces BOTH possible caps separately ("capped by verification failure" + "capped by smoke (boot) failure").
+- **`POST /api/scans`** — accepts optional `smokeTest: z.boolean()`. Defaults false to preserve v1.5 behavior on existing client code.
+- **Eval bench** — `OfflineFixtureInputSchema` mirrors the new optional `smokePassed`. New fixture `smoke-failed-cap.json` (signals 90, verification passed, smoke failed → cap at 50 → low). **Baseline re-seeded: 7/7 passed, 100% bucket + 100% range. Now the v2.0 honesty anchor**.
+- **UI (component-side)** — `Stage` type gains `'SMOKE'`; `STAGES` adds 5th lane; `STAGES_NO_SMOKE` is the v1.5 set. `PHASE_TO_POSE['SMOKE'] = 'verifying'` (reuse, no new pose per DESIGN.md §11b v2). `StageLane` accepts `smokeEnabled?: boolean` prop (defaults false → v1.5 visual unchanged). `StatusPill` + `TerminalLog` color maps cover SMOKE (warning amber until verdict). **Page-side wiring (persist `smokeRequested` on Scan, pass `smokeEnabled` from /scan/[id]) is the small follow-on.**
+- **+34 new tests** (`tests/sandbox-smoke.test.ts` 26 cases · `tests/confidence-score.test.ts` +5 smoke-cap cases · `tests/sandbox-provider.test.ts` +1 runSmoke delegation · `tests/eval-bench.test.ts` continues to pass with the new fixture). Honesty assertions baked into the tests: "no boot command → attempted=false", "timeout while running → booted=false reason=timed-out", "smoke disabled → not a pass", `--network=none` is asserted in the built Docker command.
+- **CLAUDE.md §5 rule 16 enforced**: Phase C is `--network=none`, never bridged. CLAUDE.md §5 rule 18 enforced: smoke.ts uses no new `exec(shell-string)` outside the existing executor pattern.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **398 passed** (was 367, +31) / 7 gated. `pnpm eval` ✅ 7/7 100%/100%. New baseline committed.
+- **Next:** small follow-on (persist `smokeRequested`, thread `smokeEnabled` to S4); then **v2.1 (F21 monorepo + F22 inspector)**.
 
 **2026-05-31 (v2.0 / SandboxProvider refactor — cloud-readiness seam for v3)**
 Second v2.0 piece done. The runner used to call Docker functions in `lib/sandbox/executor.ts` directly — that coupled the agent to one specific runtime. v3 needs to swap in a hosted sandbox (E2B / Fly Machines) without rewriting the agent. Now a single seam.

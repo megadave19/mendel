@@ -25,6 +25,7 @@ import type {
   PackageManager,
   PhaseAResult,
   PhaseBResult,
+  PhaseCResult,
   SandboxConfig,
 } from './types'
 import {
@@ -34,6 +35,7 @@ import {
   runPhaseA as executorRunPhaseA,
   runPhaseB as executorRunPhaseB,
 } from './executor'
+import { runPhaseC as smokeRunPhaseC } from './smoke'
 
 // ── The contract ──────────────────────────────────────────────────────────────
 
@@ -73,6 +75,14 @@ export interface SandboxProvider {
   runTest(config: SandboxConfig, installArtifact: string): Promise<PhaseBResult>
 
   /**
+   * Phase C (v2.0 / F20) — smoke-test: boot the patched app and confirm it
+   * comes up without crashing within a timeout. MUST run with no egress
+   * (CLAUDE.md §5 rule 16). When `config.smokeTest` is absent or disabled,
+   * returns `attempted=false` — NEVER fakes a green.
+   */
+  runSmoke(config: SandboxConfig, installArtifact: string): Promise<PhaseCResult>
+
+  /**
    * Tear down any persistent state created by the run (volumes on local,
    * sessions on hosted). Returns whether the teardown succeeded — never
    * throws, because the runner always tries teardown in `finally`.
@@ -104,6 +114,10 @@ export class LocalDockerProvider implements SandboxProvider {
 
   async runTest(config: SandboxConfig, vol: string): Promise<PhaseBResult> {
     return executorRunPhaseB(config, vol)
+  }
+
+  async runSmoke(config: SandboxConfig, vol: string): Promise<PhaseCResult> {
+    return smokeRunPhaseC(config, vol)
   }
 
   async teardown(vol: string): Promise<boolean> {

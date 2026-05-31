@@ -67,6 +67,12 @@ export const ConfidenceScoreSchema = z.object({
   analysisCoverage: AnalysisCoverageSchema,
   /** True if verification failure capped the overall to 50. */
   verificationCapped: z.boolean(),
+  /**
+   * v2.0 / F20 — True iff smoke (Phase C) was ATTEMPTED and DIDN'T boot,
+   * capping the overall to 50. Defaults false (omitted in old data → false
+   * via Zod default — no calibration shift on legacy scans).
+   */
+  smokeCapped: z.boolean().default(false),
 })
 export type ConfidenceScore = z.infer<typeof ConfidenceScoreSchema>
 
@@ -235,6 +241,17 @@ export interface CalculateConfidenceInput {
   semanticDiff: SemanticDiff | null
   patchedFilePaths: string[]
   verificationPassed: boolean
+  /**
+   * v2.0 / F20 — Phase C (smoke) outcome:
+   *   - `null` or omitted → smoke was NOT attempted (legacy scans, smoke
+   *     disabled, no boot command detected). No cap applied — calibration
+   *     is unchanged from v1.5 for scans that don't smoke.
+   *   - `true` → smoke RAN and the app booted. No cap, score per signals.
+   *   - `false` → smoke RAN and the app did NOT boot. Caps overall at 50
+   *     (same VERIFY_FAIL_CAP) — boot failure is honest evidence the patch
+   *     broke the app. CLAUDE.md §5b rule 7 extended.
+   */
+  smokePassed?: boolean | null
 }
 
 /**
@@ -243,7 +260,7 @@ export interface CalculateConfidenceInput {
  * Deterministic: same inputs → same output bytes (sorted internal ordering).
  */
 export function calculateConfidence(input: CalculateConfidenceInput): ConfidenceScore {
-  const { breakingChanges, semanticDiff, patchedFilePaths, verificationPassed } = input
+  const { breakingChanges, semanticDiff, patchedFilePaths, verificationPassed, smokePassed } = input
   const semanticAvailable = semanticDiff !== null
 
   // Coverage info: from semantic-diff if present, else zero/none.
@@ -285,8 +302,13 @@ export function calculateConfidence(input: CalculateConfidenceInput): Confidence
       ? weightedAverage(perBreakingChange.map((p) => p.score))
       : 75
 
+  // v2.0 / F20 — smoke (Phase C) cap. `smokePassed=false` means smoke RAN
+  // and the app did NOT boot — same honesty class as "tests failed," so we
+  // apply the same cap. `null`/omitted = not attempted = no cap (legacy).
+  const smokeFailed = smokePassed === false
   const verificationCapped = !verificationPassed && baseScore > VERIFY_FAIL_CAP
-  const overall = verificationCapped ? VERIFY_FAIL_CAP : baseScore
+  const smokeCapped = smokeFailed && baseScore > VERIFY_FAIL_CAP
+  const overall = (verificationCapped || smokeCapped) ? VERIFY_FAIL_CAP : baseScore
   const bucket = bucketFromScore(overall)
 
   return ConfidenceScoreSchema.parse({
@@ -296,6 +318,7 @@ export function calculateConfidence(input: CalculateConfidenceInput): Confidence
     perPatchedFile,
     analysisCoverage: coverage,
     verificationCapped,
+    smokeCapped,
   })
 }
 

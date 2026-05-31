@@ -126,8 +126,63 @@ describe('confidence: overall + bucket + verification cap', () => {
       verificationPassed: false,
     })
     expect(result.verificationCapped).toBe(true)
+    expect(result.smokeCapped).toBe(false)
     expect(result.overall).toBe(50)
     expect(result.bucket).toBe('low')
+  })
+
+  // ─── v2.0 / F20 — smoke (Phase C) cap ─────────────────────────────────────
+
+  it("smoke=false caps overall at 50 even when verification passed (boot failed → can't ship)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('a'), changelog('b')],
+      semanticDiff: semanticDiff(['a', 'b'], 90),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      smokePassed: false,
+    })
+    expect(result.smokeCapped).toBe(true)
+    expect(result.verificationCapped).toBe(false)
+    expect(result.overall).toBe(50)
+    expect(result.bucket).toBe('low')
+  })
+
+  it('smoke=true does NOT cap (passing smoke is just no-cap — it doesn\'t boost)', () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('a')],
+      semanticDiff: semanticDiff(['a'], 90),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      smokePassed: true,
+    })
+    expect(result.smokeCapped).toBe(false)
+    expect(result.verificationCapped).toBe(false)
+    expect(result.bucket).toBe('high')
+  })
+
+  it("smoke=null/omitted = not attempted = no cap (back-compat with v1.5 scans)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('a')],
+      semanticDiff: semanticDiff(['a'], 90),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      // smokePassed omitted → undefined
+    })
+    expect(result.smokeCapped).toBe(false)
+    expect(result.bucket).toBe('high')
+  })
+
+  it("both verification AND smoke failed: BOTH caps fire (the runner can render both reasons)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('a')],
+      semanticDiff: semanticDiff(['a'], 90),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: false,
+      smokePassed: false,
+    })
+    expect(result.verificationCapped).toBe(true)
+    expect(result.smokeCapped).toBe(true)
+    expect(result.overall).toBe(50)
   })
 
   it('high bucket (≥ 80): both-agree case lands at high', () => {

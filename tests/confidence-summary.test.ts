@@ -35,6 +35,7 @@ function score(overall: number, bucket: ConfidenceScore['bucket'], opts: Partial
     perPatchedFile: [],
     analysisCoverage: { symbolsAnalyzed: 0, symbolsTotal: 0, percentCovered: 0, analysisTier: 'dts', notAnalyzed: [] },
     verificationCapped: false,
+    smokeCapped: false,
     ...opts,
   }
 }

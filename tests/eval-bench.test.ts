@@ -61,6 +61,7 @@ function fakeObserved(overrides: Partial<ConfidenceScore> = {}): ConfidenceScore
       analysisTier: 'none', notAnalyzed: [{ symbol: '*', reason: 'n/a' }],
     },
     verificationCapped: false,
+    smokeCapped: false,
     ...overrides,
   }
 }

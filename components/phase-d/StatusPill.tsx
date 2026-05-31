@@ -14,6 +14,10 @@ const PHASE_COLOR: Record<Phase, string> = {
   DIAGNOSE: 'var(--accent-secondary)',
   PATCH: 'var(--accent-primary)',
   VERIFY: 'var(--accent-warning)',
+  // v2.0 / F20 — SMOKE shares the warning/verification color family until a
+  // boot result is in; the IssueCard renders a separate phosphor/amber/danger
+  // sub-panel for the actual smoke outcome (DESIGN.md §11b v2 brief).
+  SMOKE: 'var(--accent-warning)',
   DONE: 'var(--accent-primary)',
   ERROR: 'var(--accent-danger)',
 }

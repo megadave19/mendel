@@ -153,7 +153,7 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
    * → renders as em-dash. Sums approximately to scan.elapsedMs.
    */
   const phaseDurations = useMemo<Record<Stage, number | null>>(() => {
-    const result: Record<Stage, number | null> = { SCAN: null, DIAGNOSE: null, PATCH: null, VERIFY: null }
+    const result: Record<Stage, number | null> = { SCAN: null, DIAGNOSE: null, PATCH: null, VERIFY: null, SMOKE: null }
     if (scan.lines.length === 0 || scan.lines[0].t < 0) return result
     const firstSeen: Partial<Record<Stage, number>> = {}
     for (const line of scan.lines) {
@@ -306,8 +306,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
             <SectionLabel>Timeline</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.625rem' }}>
               {STAGES.map((stage) => {
-                const order: Record<Stage, number> = { SCAN: 0, DIAGNOSE: 1, PATCH: 2, VERIFY: 3 }
-                const currentOrder = scan.phase === 'DONE' || scan.phase === 'ERROR' ? 4 : order[scan.phase as Stage] ?? 0
+                const order: Record<Stage, number> = { SCAN: 0, DIAGNOSE: 1, PATCH: 2, VERIFY: 3, SMOKE: 4 }
+                const currentOrder = scan.phase === 'DONE' || scan.phase === 'ERROR' ? 5 : order[scan.phase as Stage] ?? 0
                 const isDone = order[stage] < currentOrder
                 const isActive = scan.phase === stage
                 const duration = phaseDurations[stage]

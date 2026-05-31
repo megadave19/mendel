@@ -28,6 +28,13 @@ const StartScanSchema = z.object({
    * analyzed but no PR is opened (report only). Owned repos ignore this.
    */
   externalContributionAck: z.boolean().optional(),
+  /**
+   * v2.0 / F20 — opt into Phase C (smoke-test). When true and Phase B passes,
+   * Mendel boots the patched app in --network=none Docker and checks whether
+   * it comes up. A smoke failure caps confidence at 50. Defaults false to
+   * preserve v1.5 behavior on existing client code.
+   */
+  smokeTest: z.boolean().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -58,6 +65,7 @@ export async function POST(req: NextRequest) {
       confidenceThreshold: body.confidenceThreshold,
       tier2AllowlistHosts: body.tier2AllowlistHosts,
       externalContributionAck: body.externalContributionAck,
+      smokeTest: body.smokeTest,
     })
 
     return NextResponse.json({ id: scan.id }, { status: 202 })
