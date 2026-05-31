@@ -57,6 +57,72 @@ describe('issue-vm: persist → map round-trip', () => {
     expect(vm.notAnalyzed.length).toBeGreaterThan(0)
   })
 
+  /* 2026-05-31 — Phase B output capture (the gap caught auditing scan
+   * cmptwjea2…). Without these tests, the runner could silently regress to
+   * empty `verification.output` on Phase B failures — leaving the user with
+   * no clue what typecheck broke (same opacity §11c was added to prevent). */
+  it('persistIssueData writes the failure output when verification failed (Phase A OR B)', async () => {
+    const { persistIssueData } = await import('@/lib/agent/issue-vm')
+    const dep = { name: 'react', currentVersion: '18.2.0', latestVersion: '19.0.0' } as never
+    const diagnosis = { summary: 'major', impact: 'big' } as never
+    const patches = [{ filePath: 'package.json', explanation: 'bump', newContent: '' }] as never
+    const phaseFailureLog = 'src/App.tsx(12,5): error TS2322: Type X is not assignable to Y.\n[stderr]\nnpm exited 1'
+
+    const data = persistIssueData({
+      scanId: 'scan-x',
+      dep,
+      breakingChanges: [],
+      diagnosis,
+      patches,
+      verificationPassed: false,
+      phaseAOutput: phaseFailureLog, // runner passes whichever phase failed
+    })
+    const verification = JSON.parse(data.verification)
+    expect(verification.passed).toBe(false)
+    expect(verification.output).toContain('error TS2322')
+    expect(verification.output).toContain('npm exited 1')
+  })
+
+  it('persistIssueData stores ONLY {passed:true} when verification passed — no stale output leaks in', async () => {
+    const { persistIssueData } = await import('@/lib/agent/issue-vm')
+    const dep = { name: 'lodash', currentVersion: '4.17.20', latestVersion: '4.17.21' } as never
+    const diagnosis = { summary: 'patch', impact: 'small' } as never
+    const patches = [{ filePath: 'package.json', explanation: 'bump', newContent: '' }] as never
+
+    const data = persistIssueData({
+      scanId: 'scan-y',
+      dep,
+      breakingChanges: [],
+      diagnosis,
+      patches,
+      verificationPassed: true,
+      phaseAOutput: 'stale output that should NOT appear', // caller mistake
+    })
+    const verification = JSON.parse(data.verification)
+    expect(verification).toEqual({ passed: true })
+    expect(verification.output).toBeUndefined()
+  })
+
+  it('caps the persisted output to ~1500 chars (the user sees a tail, not a megabyte)', async () => {
+    const { persistIssueData } = await import('@/lib/agent/issue-vm')
+    const dep = { name: 'react', currentVersion: '18.2.0', latestVersion: '19.0.0', isMonorepoMember: false } as never
+    const huge = 'X'.repeat(5000)
+
+    const data = persistIssueData({
+      scanId: 'scan-z',
+      dep,
+      breakingChanges: [],
+      diagnosis: { summary: '', impact: '' } as never,
+      patches: [{ filePath: 'package.json', explanation: 'bump', newContent: '' }] as never,
+      verificationPassed: false,
+      phaseAOutput: huge,
+    })
+    const verification = JSON.parse(data.verification)
+    expect(verification.output.length).toBeLessThanOrEqual(1500)
+    // Keeps the TAIL, not the head — the failure cause is usually at the end.
+    expect(verification.output.endsWith('X')).toBe(true)
+  })
+
   it('dbIssueToVM falls back safely on malformed/empty blobs', async () => {
     const { dbIssueToVM } = await import('@/lib/agent/issue-vm')
     const vm = dbIssueToVM({ id: 'x', diagnosis: 'not-json', patch: null, verification: '', notAnalyzed: '[]', prUrl: null } as unknown as Issue)

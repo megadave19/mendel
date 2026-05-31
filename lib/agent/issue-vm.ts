@@ -87,10 +87,12 @@ export function persistIssueData(args: {
    */
   confidenceScore?: ConfidenceScore | null
   /**
-   * Last ~1500 chars of Phase A (install) stdout/stderr. Persisted only when
-   * verification failed, so the user (and post-hoc debugging) can see WHY the
-   * install failed — instead of just a `passed:false` boolean. Without this,
-   * "Phase A failed" was a black box even in the DB.
+   * Last ~1500 chars of stdout/stderr from the phase that FAILED. The runner
+   * sends Phase A output when install failed, OR Phase B output when install
+   * passed but typecheck/test failed (the 2026-05-31 gap caught auditing scan
+   * cmptwjea2…). Without this, the user couldn't see WHAT broke verification
+   * — same opacity §11c was added to prevent. Name kept for back-compat with
+   * older callers; semantics are now "the relevant failure output."
    */
   phaseAOutput?: string
 }) {

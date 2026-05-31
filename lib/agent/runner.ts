@@ -506,6 +506,13 @@ export async function runScan(
       // calculateConfidence honors `null` by NOT applying the smoke cap —
       // existing scans behave identically to v1.5.
       let smokePassed: boolean | null = null
+      // v2.0 fix (2026-05-31, gap caught auditing cmptwjea2…): hoist phaseB
+      // outside the if-block so the persist step below can store its stdout
+      // when Phase B fails. Previously the verification blob's `output` was
+      // empty on Phase B failures → user had no way to see what typecheck
+      // broke. Closes the same §11c class as the Phase A capture did.
+      let phaseBStdout: string | null = null
+      let phaseBStderr: string | null = null
 
       if (phaseA.success) {
         log('Running Phase B — typecheck in --network=none sandbox...')
@@ -521,6 +528,8 @@ export async function runScan(
           output: phaseB.stdout.slice(-500),
         })
         verificationPassed = phaseB.typecheckPassed
+        phaseBStdout = phaseB.stdout ?? ''
+        phaseBStderr = phaseB.stderr ?? ''
 
         // v2.0 / F20 — Phase C runs ONLY when Phase B passed (no point booting
         // a patch we know fails typecheck) AND smoke is enabled in opts. The
@@ -662,11 +671,19 @@ export async function runScan(
       // Store the finding so permalinks + playback (S5/S6/S7) render real data.
       // persistIssueData enforces §5b: confidence framing + Not-Analyzed.
       try {
-        // Concat stdout + stderr because the install runs with 2>&1; some
-        // exit paths populate one and not the other.
-        const phaseAOutput = !phaseA.success
-          ? `${phaseA.stdout ?? ''}\n${phaseA.stderr ?? ''}`.trim()
-          : undefined
+        // Capture the output of the phase that FAILED so the verification
+        // blob carries the actual cause (closes the §11c "show the user what
+        // broke" gap). Concat stdout + stderr because Phase A runs with 2>&1;
+        // some exit paths populate one and not the other.
+        // Priority: Phase A failure → its output. Phase A ok + Phase B fail
+        // → Phase B output (this is what was empty in scan cmptwjea2…). Both
+        // ok → no output needed.
+        let phaseAOutput: string | undefined
+        if (!phaseA.success) {
+          phaseAOutput = `${phaseA.stdout ?? ''}\n${phaseA.stderr ?? ''}`.trim()
+        } else if (!verificationPassed && (phaseBStdout || phaseBStderr)) {
+          phaseAOutput = `${phaseBStdout ?? ''}\n${phaseBStderr ?? ''}`.trim()
+        }
         await db.issue.create({
           data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput }),
         })

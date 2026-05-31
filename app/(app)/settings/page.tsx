@@ -19,6 +19,7 @@ import { PanelFrame } from '@/components/phase-d/PanelFrame'
 import { useToast } from '@/components/shared/toast'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { TIER_1_HOSTS, Tier2HostSchema } from '@/lib/sandbox/iptables-allowlist'
+import { notifyPrefChange } from '@/hooks/use-user-prefs'
 
 const ABOUT: [string, string][] = [
   ['All PRs', 'Open as Drafts — you manually mark ready'],
@@ -33,9 +34,13 @@ interface ValidationInfo { login?: string; scopes?: string[] }
 /* Preferences — written to localStorage so they survive reloads.
    Read globally elsewhere via getPref() if/when wired into components.
    Keys are deliberately namespaced to avoid collisions. */
+/* 2026-05-31 — `mascot` key aligned to `mendel:pref:mascot` to match the
+   reader hook in hooks/use-user-prefs.ts + public/prefs-init.js. The old
+   `mendel:pref:mascotEnabled` was never read by any consumer (the §7.2a
+   dead-control bug); changing it now affects no live behavior. */
 const PREF_KEY = {
   reduceMotion:        'mendel:pref:reduceMotion',
-  mascot:              'mendel:pref:mascotEnabled',
+  mascot:              'mendel:pref:mascot',
   /* v1.5 Workstream #4 — calibrated confidence threshold (40–100). Read by
      /scan/new before POST so the runner gets a per-scan override. */
   confidenceThreshold: 'mendel:pref:confidenceThreshold',
@@ -203,12 +208,17 @@ export default function SettingsPage() {
     toast.info('Token revoked from this session.')
   }
 
-  /* Preference toggle handlers — write to localStorage and notify. */
+  /* Preference toggle handlers — write to localStorage and notify.
+     v2.0 fix (§7.2a dead-control): notifyPrefChange() dispatches a same-tab
+     custom event so useReduceMotion / useMascotEnabled consumers re-render.
+     Previously these toggles updated state + dataset but no component read
+     the values, so the controls did nothing user-visible. */
   const toggleReduceMotion = () => {
     const next = !reduceMotion
     setReduceMotion(next)
     localStorage.setItem(PREF_KEY.reduceMotion, next ? '1' : '0')
     document.documentElement.dataset.reduceMotion = next ? '1' : '0'
+    notifyPrefChange()
     toast.info(next ? 'Reduced motion enabled.' : 'Reduced motion disabled.')
   }
   const toggleMascot = () => {
@@ -216,6 +226,7 @@ export default function SettingsPage() {
     setMascotEnabled(next)
     localStorage.setItem(PREF_KEY.mascot, next ? '1' : '0')
     document.documentElement.dataset.mascot = next ? '1' : '0'
+    notifyPrefChange()
     toast.info(next ? 'Mascot enabled.' : 'Mascot hidden.')
   }
 
@@ -679,6 +690,7 @@ function ToggleRow({
       <button
         type="button"
         role="switch"
+        aria-label={label}
         aria-checked={on}
         aria-disabled={disabled || undefined}
         onClick={() => { if (!disabled) onToggle() }}

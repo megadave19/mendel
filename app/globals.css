@@ -457,7 +457,14 @@ input[type="email"]:focus {
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── */
-
+/*
+ * Two trigger paths converge on the same rule:
+ *   - OS-level setting: @media (prefers-reduced-motion: reduce)
+ *   - In-app Settings toggle: html[data-reduce-motion="1"]
+ *
+ * Without the second selector the Settings toggle silently did nothing
+ * (the §7.2a dead-control bug discovered 2026-05-31).
+ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -465,4 +472,12 @@ input[type="email"]:focus {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+html[data-reduce-motion="1"] *,
+html[data-reduce-motion="1"] *::before,
+html[data-reduce-motion="1"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

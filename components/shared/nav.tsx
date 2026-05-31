@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { BonesMascot } from '@/components/BonesMascot'
 import { useMascotPhase } from '@/components/mascot-phase-context'
+import { useMascotEnabled } from '@/hooks/use-user-prefs'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '◈' },
@@ -24,6 +25,9 @@ const NAV_ITEMS = [
  * one screen at worst. Removed.
  */
 export function AppNav() {
+  // v2.0 — read the Settings "Show mascot" toggle. Closes §7.2a dead-control
+  // gap: previously the toggle wrote localStorage but nothing read it.
+  const mascotVisible = useMascotEnabled()
   const pathname = usePathname()
   const { phase } = useMascotPhase()
 
@@ -116,25 +120,30 @@ export function AppNav() {
         })}
       </div>
 
-      {/* Sole mascot for the entire app — reacts to the current phase. */}
-      <div className="nav-sidebar-mascot" style={{
-        padding: '1rem 0.5rem 1.25rem',
-        borderTop: '1px solid var(--border-subtle)',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '0.625rem',
-      }}>
-        <BonesMascot pose={phase} size={180} />
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.5625rem',
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
-          color: 'var(--text-secondary)',
+      {/* Sole mascot for the entire app — reacts to the current phase.
+          Hidden when the user disables "Show mascot" in Settings. We render
+          nothing (vs. a 0-height placeholder) so the sidebar gracefully
+          collapses. Use data-mascot-slot so e2e tests can assert visibility. */}
+      {mascotVisible && (
+        <div className="nav-sidebar-mascot" data-mascot-slot="visible" style={{
+          padding: '1rem 0.5rem 1.25rem',
+          borderTop: '1px solid var(--border-subtle)',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '0.625rem',
         }}>
-          bones · {phase}
-        </span>
-      </div>
+          <BonesMascot pose={phase} size={180} />
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.5625rem',
+            letterSpacing: '0.22em',
+            textTransform: 'uppercase',
+            color: 'var(--text-secondary)',
+          }}>
+            bones · {phase}
+          </span>
+        </div>
+      )}
 
       {/* Confidence badge — hidden in top-bar mode */}
       <div className="nav-sidebar-badge" style={{ padding: '0.75rem 1rem 0.5rem' }}>

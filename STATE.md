@@ -110,6 +110,40 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-31 (Settings toggles wired + Phase B output capture — §7.2a dead-control + §11c gap closeout)**
+PM caught two real bugs auditing scan `cmptwjea2…`:
+1. **§7.2a violation: "Show mascot" + "Reduce motion" toggles did NOTHING.** The Settings page wrote prefs to `localStorage` and `<html>` dataset, but **NOTHING in the app READ them**. Toggles fired toasts; consequence chain was severed. Exactly the dead-control class §7.2a was written to prevent — I missed re-auditing Settings against the rule after I added it.
+2. **§11c violation: Phase B failure output was empty in the DB.** When verification failed with `phaseA.success=true` but `phaseB.success=false`, the verification blob persisted as `{passed:false, output:""}` — user had no way to see WHAT typecheck broke. Same opacity class §11c was written to catch.
+
+PM also flagged "PR #19 wasn't a draft despite low confidence." **I was wrong.** GitHub events timeline shows the user manually clicked Ready-for-review at 15:00:51 (3 min after PR opened). PRs #17 and #18 are still `isDraft: true`. Threshold-gate Draft logic IS working. Honest correction: I should've checked the events timeline before claiming the bug — exactly what §11c is about.
+
+**Fixes shipped:**
+- **`hooks/use-user-prefs.ts`** (new) — `useReduceMotion()` + `useMascotEnabled()` hooks. Read `localStorage`, listen to same-tab `mendel:pref-change` custom event + cross-tab native `storage` event. SSR-safe. Single source of truth for PREF_KEY shared with the writer (Settings page).
+- **`public/prefs-init.js`** (new static asset) — applies `<html data-reduce-motion>` + `<html data-mascot>` BEFORE React mounts so toggles take effect on first paint with no flicker. CLAUDE.md §5 rule 9 honored (external src, no inline html injection).
+- **`app/layout.tsx`** — `<Script src="/prefs-init.js" strategy="beforeInteractive" />` via `next/script` (the recommended Next.js 15 App Router path; passes `@next/next/no-sync-scripts`).
+- **`app/globals.css`** — added `html[data-reduce-motion="1"]` rule alongside the existing `@media (prefers-reduced-motion: reduce)`. Both paths converge on the same cascade so the OS setting AND the in-app toggle both work.
+- **`components/shared/nav.tsx`** — `AppNav` reads `useMascotEnabled()` and conditionally renders the sidebar mascot wrapper. Adds `data-mascot-slot="visible"` so e2e tests can assert presence/absence.
+- **`app/(app)/settings/page.tsx`** — `toggleReduceMotion` + `toggleMascot` call `notifyPrefChange()` after writing localStorage so same-tab consumers re-render immediately.
+- **`lib/agent/runner.ts`** — hoisted Phase B stdout/stderr out of the `if (phaseA.success)` block so the persist step can store them when Phase B fails. Persists priority: Phase A output if Phase A failed → else Phase B output if Phase B failed → else no output (verification passed).
+- **`lib/agent/issue-vm.ts`** — updated `phaseAOutput` docstring to reflect new semantics ("the relevant failure output" regardless of phase). Behavior unchanged; name preserved for back-compat.
+
+**Tests added (6):**
+- **`tests/e2e/settings-toggles.spec.ts`** (new) — 5 Playwright cases. Toggle Show-mascot OFF → sidebar mascot DOM absent (not just CSS-hidden). Survives navigation via the prefs-init script. Reduce-motion writes `<html data-reduce-motion="1">` + the global * animation-duration ≤ 0.01ms rule applies. Cross-tab via native storage event. Explicit comment in the file header records WHY each existing test layer missed the original bug.
+- **`tests/issue-vm.test.ts`** — 3 new unit cases for Phase B output capture: persist writes output when verification failed (regardless of phase), persist writes `{passed:true}` ONLY when verification passed (no stale-output leak), output capped at 1500 chars keeping the tail (failure cause usually at the end).
+
+**Why the existing tests missed both bugs (honest audit):**
+- `pnpm smoke` (Playwright `tests/e2e/smoke.spec.ts`) covers 3 critical flows — auth, scan, fix. Settings page wasn't on the list.
+- Visual regression (`tests/e2e/visual.spec.ts`) snapshots static pages; a broken toggle renders pixel-identical to a working one when loaded fresh.
+- `tests/e2e/reduced-motion.spec.ts` emulates the OS-level `prefers-reduced-motion: reduce` media query — does NOT test the in-app Settings toggle.
+- §7.2a's intent ("the control actually does what it appears to do") wasn't enforced on Settings because I never re-audited the page after writing the rule. Process gap — closed by the new toggle e2e spec.
+
+**Bonus bugs caught while writing the e2e test (real wins for the test layer):**
+- **A11y bug**: the `ToggleRow` switch button had `role="switch"` but NO `aria-label` → screen readers (and Playwright getByRole) couldn't query it. Added `aria-label={label}`.
+- **Key drift**: Settings page used `mendel:pref:mascotEnabled`; my hook + init script used `mendel:pref:mascot`. Different keys → nothing synced even after I added the consumer. Aligned both to `mendel:pref:mascot` (the existing key was never read by any consumer — confirmed dead).
+- These two ALSO would have stayed hidden without the e2e test. §7.2a's intent is exactly to surface this class.
+
+Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **406 passed** (was 403, +3) / 10 gated. **Playwright `settings-toggles.spec.ts` ✅ 5/5 against live dev server in 10.7s** (verifies the live click → localStorage write → useMascotEnabled re-render → DOM removal pipeline end-to-end). `pnpm eval` ✅ no regression.
+
 **2026-05-31 (Sync PR States — dedup duplicate Issue rows + classify errors honestly)**
 PM raised: "I clicked Sync PR States and got 6 PRs could not be checked (network/auth)." Two bugs surfaced:
 - **Dedup gap.** Re-scanning a repo creates one Issue row per scan, all pointing to the same PR. For megadave19/mendel-test the user had 3 rows for PR #1 and 3 for PR #2 — 6 Issue rows for 2 actual PRs. The poller hit GitHub 6 times AND counted 6 "errors" when in reality 2 PRs were broken. Fixed: `pollPrStates` now groups Issue rows by `prUrl` BEFORE polling, calls GitHub once per unique URL, and applies the resolution to every row via `updateMany`. The summary now matches what a human would call "broken PRs."
