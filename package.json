@@ -22,7 +22,8 @@
     "db:studio": "prisma studio",
     "prepare": "husky",
     "gate:1b": "tsx scripts/gate-1b.ts",
-    "gate:1c": "tsx scripts/gate-1c.ts"
+    "gate:1c": "tsx scripts/gate-1c.ts",
+    "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

@@ -1,0 +1,46 @@
+{
+  "id": "synthetic-self-test",
+  "packageName": "synthetic",
+  "fromVersion": "1.0.0",
+  "toVersion": "2.0.0",
+  "description": "Hand-computed canonical case: two breaking changes, both signals flag both symbols, semantic-diff at 100% coverage on dts tier, verification passes. Per TRD §9.5 each symbol scores 90 (both-agree mid-point) → average 90 → bucket high. This fixture validates the scorer itself; if it ever fails the scorer math drifted.",
+  "mode": "offline",
+  "tags": ["self-test"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "foo",
+        "changeType": "removed",
+        "description": "foo() was removed from the public API.",
+        "sourceUrl": "https://example.com/changelog#foo"
+      },
+      {
+        "symbol": "bar",
+        "changeType": "signature-changed",
+        "description": "bar() signature changed from bar(a) to bar(a, b).",
+        "sourceUrl": "https://example.com/changelog#bar"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": ["foo"],
+      "signatureChanges": [
+        { "symbol": "bar", "before": "(a: string) => void", "after": "(a: string, b: number) => void" }
+      ],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["src/index.ts"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "high",
+    "overall": { "min": 89, "max": 91 },
+    "perSymbolHits": [
+      { "symbol": "foo", "shouldDetect": true },
+      { "symbol": "bar", "shouldDetect": true }
+    ]
+  }
+}

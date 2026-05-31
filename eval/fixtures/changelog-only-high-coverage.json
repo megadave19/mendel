@@ -1,0 +1,37 @@
+{
+  "id": "changelog-only-high-coverage",
+  "packageName": "synthetic-changelog-only",
+  "fromVersion": "5.0.0",
+  "toVersion": "6.0.0",
+  "description": "Changelog claims a breaking change in oldMethod(), but semantic-diff RAN at dts tier with 100% coverage and did NOT confirm it — a real disagreement, not 'we didn't look'. Per TRD §9.5 this is the changelogOnlyHighCoverage case → score 48 ('needs manual verification'). Bucket lands LOW (<60). Verification passes — but signal disagreement keeps it honest. This is the case where we MUST resist inflating to ship more PRs (§5b rule 6).",
+  "mode": "offline",
+  "tags": ["self-test"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "oldMethod",
+        "changeType": "removed",
+        "description": "Changelog says oldMethod() was removed in v6.",
+        "sourceUrl": "https://example.com/changelog#oldMethod"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": [],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["package.json"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "low",
+    "overall": { "min": 47, "max": 49 },
+    "perSymbolHits": [
+      { "symbol": "oldMethod", "shouldDetect": true }
+    ]
+  }
+}

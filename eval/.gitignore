@@ -1,0 +1,6 @@
+# Per-run reports are local artifacts — only the committed baseline lives in git.
+# CLAUDE.md §5b v2 rule 2: baseline.{json,md} is the honesty anchor; everything
+# else is ephemeral.
+reports/*
+!reports/baseline.json
+!reports/baseline.md

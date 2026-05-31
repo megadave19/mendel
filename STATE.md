@@ -1,8 +1,8 @@
 # STATE.md — Mendel Session State
 
 > Living log. Read at session start. Update after every meaningful session or state change.
-> **Last updated:** 2026-05-28
-> **Current phase:** v1.5 (Calibrated Confidence) — Phase D + Gate D4 closed 2026-05-27 with full engineering verification
+> **Last updated:** 2026-05-31
+> **Current phase:** **v2.0 IN PROGRESS** — F19 eval bench landed + committed baseline. Next: SandboxProvider refactor → F20 Phase C smoke-test.
 
 ---
 
@@ -97,7 +97,42 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ---
 
+## Backlog (deferred — not blocking the next phase)
+
+| # | Item | Why deferred | Trigger to pick up |
+| --- | --- | --- | --- |
+| B1 | **Per-dep retry button** on `/scan/[id]` — if Phase B fails for one dep, retry just that dep without re-scanning the whole repo | Nice-to-have QoL; no honesty/correctness gap; today we re-scan the whole repo | After v2.0 (eval bench) lands, or when a real user hits the "had to wait 5 min for 1 dep to retry" pain |
+| B2 | **Auto-rebase stale Mendel PRs** — when a maintainer lands other PRs and ours conflicts, auto-rebase on the next Sync PR States cycle | Falls naturally under v2.4 / F25 (continuous monitor) | v2.4 |
+| B3 | **`execAsync(cmd-string)` → `execFile('docker', […args])`** in `lib/sandbox/executor.ts` (no shell, no injection surface) | `shArg()` is the safe minimal patch already in place; full refactor is its own change (CLAUDE.md §5 rule 18) | Any sandbox-toolchain pass; latest by v2.2 (polyglot) |
+| B4 | **Reply-to-review-comment loop** — read PR review comments, regenerate the patch addressing them | Big feature (LLM round-trip on maintainer free-form text); not in v2 plan | Post-v2; only if the eval bench shows it would move the calibration needle |
+
+---
+
 ## Recent Decisions (newest first)
+
+**2026-05-31 (v2.0 / F19 Eval Bench landed — calibration honesty anchor committed)**
+First piece of v2.0 done. The bench loads JSON fixtures, runs the REAL `calculateConfidence` (no copy — the runtime function), scores observed-vs-expected, and emits a markdown + JSON `CalibrationReport`. The committed `eval/reports/baseline.json` is now the honesty anchor per CLAUDE.md §5b v2 rule 2 — every future v2 release must re-run the bench and not regress vs. it.
+- **`lib/eval/types.ts`** — Zod schemas: `FixtureCase`, `OfflineFixtureInput`, `FixtureRunResult`, `CalibrationReport`, `BucketConfusion`. Pure data, no env coupling (v3 cloud-ready).
+- **`lib/eval/scoring.ts`** (pure) — `scoreOne` (bucket-match + range-match + per-symbol hits), `aggregateReport` (totals + 3×3 confusion matrix, sorted-by-id for deterministic git diff), `compareToBaseline` (newly-failing IDs trigger ok=false → stop-the-line CLI exit).
+- **`lib/eval/bench-runner.ts`** — `loadFixtures` (Zod-validated, malformed = loud-fail with file path attached, NEVER silent skip), `runFixture` (calls real pipeline), `runBench` (filterable by tag).
+- **`lib/eval/reporter.ts`** (pure) — JSON + markdown renderers. 2-space JSON for byte-stable baseline diffs.
+- **`scripts/eval.ts`** + `pnpm eval` — CLI with `--only-tag` / `--baseline` / `--update-baseline` / `--label`. Exits 0/1/2 (pass / regression / bench-broken). `execFileSync('git', […args])` per CLAUDE.md §5 rule 18 (no shell). CLI-only per V2_PLAN §F19; never exposed as HTTP (§5 rule 17 / §11 forbidden).
+- **`eval/fixtures/`** — 6 cases, one per branch of `scoreSymbol`: `synthetic-self-test` (both-agree → 90/high), `axios-0.24-to-0.27` (real public-API, both-agree → 90/high), `semantic-only-undocumented` (70/medium), `changelog-only-high-coverage` (signal disagreement → 48/low), `verification-failed-cap` (signals strong but Phase B failed → cap at 50/low), `version-bump-only` (no signals → baseline 75/medium).
+- **`eval/reports/baseline.{json,md}`** — committed. `.gitignore` excepts only these; per-run timestamped reports stay local.
+- **`tests/eval-bench.test.ts`** — 17 tests: scoreOne pass + 4 fail modes; aggregateReport totals + confusion + deterministic sort; compareToBaseline 4 paths (regression, no-change, win, new-failing); loadFixtures valid + malformed loud-fail; runFixture against real `calculateConfidence`; end-to-end `runBench` on the committed fixtures expects 100%; `--only-tag` typo throws (no silent "100% on 0 fixtures").
+- **Baseline numbers:** 6 fixtures · 6 passed · **100% bucket accuracy · 100% in-range**. This is the bar v2.x releases must clear.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **357 passed** (was 340) / 7 gated. `pnpm eval` runs end-to-end clean.
+- **Next:** SandboxProvider interface refactor (pure wrap of executor.ts), then F20 Phase C smoke-test. Per V2_PLAN §F20 the smoke-test is a hard prereq for v2.3 auto-merge.
+
+**2026-05-31 (Eligibility Preview — informed-consent bridge before v2.0)**
+Owner asked for the one remaining pre-v2 gap to be closed: the external-ack checkbox on `/scan/new` used to be ticked blind — the user couldn't see whether the repo welcomed PRs, was hard-blocked, or had an issue Mendel could link to. The scan-time gate (`lib/agent/eligibility.ts`) reads governance files from the clone — by then the user has already made their ack decision. This surfaces the same verdict BEFORE the scan starts.
+- **`lib/agent/eligibility-preview.ts`** (new) — fetches CONTRIBUTING / `.github/dependabot.yml` / renovate.json / CODE_OF_CONDUCT via the GitHub Contents API (no clone needed, ~1s). Calls the SAME pure `decideEligibility` as the scan-time gate so preview and gate cannot diverge. Also runs the linkable-issue heuristic (`listForRepo` → `dependencies` label / "upgrade …packages" title) so the user sees "↳ will link PR to #98" before scanning. Fail-soft: any read error sets `degraded:true` and the runtime gate stays the safety net.
+- **`POST /api/repos/eligibility-preview`** (new) — Zod-validated, rate-limited (`api`, 60/min). Generic-error envelope on failure (`decision:'unknown'`, `degraded:true`) so the UI degrades instead of breaks.
+- **`/scan/new` UI** — live debounced (600ms, AbortController-cancelled) preview block under the URL input. Color-coded verdict (lime=owned · cyan=external · amber=unknown · red=blocked). Signals rendered honestly (no signal → muted neutral; dep-automation / red-flag → danger color). Linkable issue rendered with a real link to the maintainer's issue. The external-ack checkbox is now ONLY shown when ticking it would CHANGE the decision (owned hides it, blocked hides it, external+welcome shows it). Scan button disabled on `decision:'blocked'` with a `title=` hint — acknowledgement can't override repo-policy blocks.
+- **+17 tests** (`tests/eligibility-preview.test.ts`): pure `findRedFlag` + `pickLinkableIssue`, plus integration across owned · external+welcome · blocked-by-dependabot · blocked-by-CONTRIBUTING · linkable-issue-attached · degraded. Two anti-bypass tests assert (a) `listIssues` is never called when the repo is blocked (no point + noisy), and (b) a degraded read still respects a dependabot file we DID see.
+- **Per-dep retry button** filed as backlog B1 (above) — owner explicit; we build after v2.0.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **340 passed** (was 323) / 7 gated.
+- **Live walk-through needed** (CLAUDE.md §7.2): paste 4 repo URLs into `/scan/new` and confirm each verdict block matches reality — your own repo (lime/OWNED, no ack box), `ta-vivo/ta-vivo` (cyan/EXTERNAL, ack box appears, links to #98), a Renovate/Dependabot-using repo e.g. `vercel/next.js` (red/BLOCKED, scan disabled), a repo with strict CONTRIBUTING e.g. one that says "open an issue first" (red/BLOCKED).
 
 **2026-05-31 (CLAUDE.md §11c — Data-First Debugging — codifying the 4-round lesson)**
 Owner asked why the bug took 4 rounds despite CLAUDE.md's extensive rules. Honest root cause = my process, not Mendel's code: I theorized 4 times before reading what the system had recorded. The first 3 fixes were real adjacent bugs; none was the cause. Added **CLAUDE.md §11c** as a new section (distinct from §11b "areas to be careful in" — this is about debugging *existing* bugs):

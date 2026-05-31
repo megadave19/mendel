@@ -1,0 +1,49 @@
+{
+  "id": "axios-0.24-to-0.27",
+  "packageName": "axios",
+  "fromVersion": "0.24.0",
+  "toVersion": "0.27.2",
+  "description": "Real public-API case (a real Mendel scan landed this dep on megadave19/mendel-test). Both signals flag the AxiosResponse generic re-ordering and the defaults.headers structural change. Both-agree on these two symbols → score 90 each → overall ~90 → bucket high. Verification passed for this dep on the real scan.",
+  "mode": "offline",
+  "tags": ["real-npm", "regression"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "AxiosResponse",
+        "changeType": "signature-changed",
+        "description": "AxiosResponse<T, D> generic parameters added — second type param for request data.",
+        "sourceUrl": "https://github.com/axios/axios/blob/v0.27.0/CHANGELOG.md"
+      },
+      {
+        "symbol": "defaults.headers",
+        "changeType": "signature-changed",
+        "description": "defaults.headers shape changed; per-method headers now live on AxiosDefaults['headers'][Method].",
+        "sourceUrl": "https://github.com/axios/axios/blob/v0.27.0/CHANGELOG.md"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": [],
+      "signatureChanges": [
+        { "symbol": "AxiosResponse", "before": "AxiosResponse<T = any>", "after": "AxiosResponse<T = any, D = any>" },
+        { "symbol": "defaults.headers", "before": "AxiosRequestHeaders", "after": "HeadersDefaults" }
+      ],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [
+        { "symbol": "AxiosResponse", "files": ["src/api/client.ts"] }
+      ],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["package.json", "src/api/client.ts"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "high",
+    "overall": { "min": 89, "max": 91 },
+    "perSymbolHits": [
+      { "symbol": "AxiosResponse", "shouldDetect": true },
+      { "symbol": "defaults.headers", "shouldDetect": true }
+    ]
+  }
+}

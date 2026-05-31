@@ -1,0 +1,182 @@
+{
+  "generatedAt": "2026-05-31T13:46:33.666Z",
+  "release": {
+    "label": "v2.0-baseline",
+    "gitCommit": "80fbc7a5f3dc4aaf3f1c641c338325510810b862"
+  },
+  "totals": {
+    "fixtures": 6,
+    "passed": 6,
+    "failed": 0,
+    "bucketAccuracyPercent": 100,
+    "overallInRangePercent": 100
+  },
+  "bucketConfusion": {
+    "high": {
+      "high": 2,
+      "medium": 0,
+      "low": 0
+    },
+    "medium": {
+      "high": 0,
+      "medium": 2,
+      "low": 0
+    },
+    "low": {
+      "high": 0,
+      "medium": 0,
+      "low": 2
+    }
+  },
+  "fixtures": [
+    {
+      "id": "axios-0.24-to-0.27",
+      "packageName": "axios",
+      "fromVersion": "0.24.0",
+      "toVersion": "0.27.2",
+      "observedBucket": "high",
+      "observedOverall": 90,
+      "expectedBucket": "high",
+      "expectedOverallMin": 89,
+      "expectedOverallMax": 91,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "AxiosResponse",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        },
+        {
+          "symbol": "defaults.headers",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 10,
+      "failures": []
+    },
+    {
+      "id": "changelog-only-high-coverage",
+      "packageName": "synthetic-changelog-only",
+      "fromVersion": "5.0.0",
+      "toVersion": "6.0.0",
+      "observedBucket": "low",
+      "observedOverall": 48,
+      "expectedBucket": "low",
+      "expectedOverallMin": 47,
+      "expectedOverallMax": 49,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "oldMethod",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "semantic-only-undocumented",
+      "packageName": "synthetic-semantic-only",
+      "fromVersion": "3.0.0",
+      "toVersion": "4.0.0",
+      "observedBucket": "medium",
+      "observedOverall": 70,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 69,
+      "expectedOverallMax": 71,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "legacyHelper",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "synthetic-self-test",
+      "packageName": "synthetic",
+      "fromVersion": "1.0.0",
+      "toVersion": "2.0.0",
+      "observedBucket": "high",
+      "observedOverall": 90,
+      "expectedBucket": "high",
+      "expectedOverallMin": 89,
+      "expectedOverallMax": 91,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "foo",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        },
+        {
+          "symbol": "bar",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "verification-failed-cap",
+      "packageName": "synthetic-verify-cap",
+      "fromVersion": "7.0.0",
+      "toVersion": "8.0.0",
+      "observedBucket": "low",
+      "observedOverall": 50,
+      "expectedBucket": "low",
+      "expectedOverallMin": 50,
+      "expectedOverallMax": 50,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "removedThing",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "version-bump-only",
+      "packageName": "synthetic-bump-only",
+      "fromVersion": "1.2.3",
+      "toVersion": "1.2.4",
+      "observedBucket": "medium",
+      "observedOverall": 75,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 74,
+      "expectedOverallMax": 76,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    }
+  ]
+}

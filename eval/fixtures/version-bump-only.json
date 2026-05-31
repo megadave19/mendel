@@ -1,0 +1,27 @@
+{
+  "id": "version-bump-only",
+  "packageName": "synthetic-bump-only",
+  "fromVersion": "1.2.3",
+  "toVersion": "1.2.4",
+  "description": "No breaking changes detected by either signal — clean patch bump. Per score.ts the no-symbols branch defaults to a baseline of 75 (review-required, no concrete breakage). Verification passes. Bucket medium. This fixture pins the 'nothing detected' baseline so it can't silently inflate to high.",
+  "mode": "offline",
+  "tags": ["self-test"],
+  "input": {
+    "breakingChanges": [],
+    "semanticDiff": {
+      "removedExports": [],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["package.json"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 74, "max": 76 }
+  }
+}

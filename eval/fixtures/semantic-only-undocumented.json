@@ -1,0 +1,30 @@
+{
+  "id": "semantic-only-undocumented",
+  "packageName": "synthetic-semantic-only",
+  "fromVersion": "3.0.0",
+  "toVersion": "4.0.0",
+  "description": "Changelog silent; semantic-diff catches a removed export at dts tier 100% coverage. Per TRD §9.5 this is the 'undocumented breaking change' case → score 70 (semantic-only mid-point). Average over the one symbol = 70 → bucket medium (60–79). Verification passes. This fixture validates that we honestly elevate semantic-only signal without inflating it to high.",
+  "mode": "offline",
+  "tags": ["self-test"],
+  "input": {
+    "breakingChanges": [],
+    "semanticDiff": {
+      "removedExports": ["legacyHelper"],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["package.json"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 69, "max": 71 },
+    "perSymbolHits": [
+      { "symbol": "legacyHelper", "shouldDetect": true }
+    ]
+  }
+}
