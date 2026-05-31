@@ -28,6 +28,7 @@
 
 import { db } from '@/lib/db'
 import { decrypt } from '@/lib/crypto'
+import { GitHubError } from '@/lib/github/types'
 import {
   getPullRequestState,
   getLatestPullRequestComment,
@@ -105,6 +106,22 @@ const defaultFetcher: PrStateFetcher = async (pat, owner, repo, prNumber) => {
   return { ...s, latestComment }
 }
 
+/**
+ * v2.0 — Honest classification of a per-PR poll failure. Surfaced in the
+ * dashboard toast so the user sees the REAL reason (e.g. "repo deleted")
+ * instead of a one-size-fits-all "network/auth" string.
+ *
+ * Sourced from the underlying GitHubError.kind on the thrown error, mapped
+ * to a user-readable bucket. CLAUDE.md §5b: never lie about the cause of a
+ * failure.
+ */
+export type PollErrorKind =
+  | 'not-found'   // 404 — PR or repo no longer exists / was deleted
+  | 'auth'        // 401/403 — PAT rejected, scope insufficient, account blocked
+  | 'rate-limit'  // 429 — GitHub rate-limited the poll
+  | 'network'     // genuine network / DNS failure
+  | 'unknown'
+
 export interface PollSummary {
   checked: number
   merged: number
@@ -112,8 +129,31 @@ export interface PollSummary {
   stillOpen: number
   /** Issues skipped because their PR URL / PAT couldn't be resolved. */
   skipped: number
-  /** Per-PR errors (network, auth, etc.) — surfaced, never swallowed silently. */
-  errors: Array<{ prUrl: string; reason: string }>
+  /**
+   * Per-PR errors — surfaced, never swallowed silently. Each entry corresponds
+   * to one UNIQUE PR URL (the poller dedups before counting), so this count
+   * matches what a human would call "broken PRs", not the raw Issue-row count.
+   */
+  errors: Array<{ prUrl: string; reason: string; kind: PollErrorKind }>
+}
+
+/**
+ * Pure mapping from a thrown poll error → a PollErrorKind. The underlying
+ * GitHubError already carries a precise `kind` (auth/rate-limit/not-found/
+ * network/validation/unknown); we just narrow it to the poll vocabulary.
+ * Exported so tests + future MCP/CLI surfaces can reuse it.
+ */
+export function classifyPollError(err: unknown): PollErrorKind {
+  if (err instanceof GitHubError) {
+    switch (err.kind) {
+      case 'not-found':   return 'not-found'
+      case 'auth':        return 'auth'
+      case 'rate-limit':  return 'rate-limit'
+      case 'network':     return 'network'
+      default:            return 'unknown'
+    }
+  }
+  return 'unknown'
 }
 
 export interface PollOptions {
@@ -142,24 +182,36 @@ export async function pollPrStates(opts: PollOptions = {}): Promise<PollSummary>
     include: { scan: { select: { encryptedPat: true } } },
   })
 
+  // v2.0 — DEDUP by prUrl. Re-scanning the same repo creates multiple Issue
+  // rows pointing to the same PR (one per scan). Without dedup the poller (a)
+  // counts 3 failures for ONE deleted repo and (b) hammers GitHub redundantly.
+  // We group rows by prUrl, poll each URL ONCE, then apply the outcome to
+  // every Issue row pointing to it. Skipped/error counts now reflect unique
+  // PRs — matching what a human would call "broken PRs."
+  const byUrl = new Map<string, typeof issues>()
   for (const issue of issues) {
-    const prUrl = issue.prUrl as string
+    const url = issue.prUrl as string
+    const bucket = byUrl.get(url)
+    if (bucket) bucket.push(issue)
+    else byUrl.set(url, [issue])
+  }
+
+  for (const [prUrl, rows] of byUrl) {
     const parsed = parsePrUrl(prUrl)
     if (!parsed) {
       summary.skipped++
       continue
     }
 
-    // PAT lives encrypted on the scan. No PAT → can't query → skip honestly.
-    const enc = issue.scan?.encryptedPat
-    if (!enc) {
-      summary.skipped++
-      continue
+    // Pick the first row with a usable encryptedPat (different scans of the
+    // same repo may have rotated PATs; the freshest-decryptable wins).
+    let pat: string | null = null
+    for (const row of rows) {
+      const enc = row.scan?.encryptedPat
+      if (!enc) continue
+      try { pat = decrypt(enc); break } catch { /* try next */ }
     }
-    let pat: string
-    try {
-      pat = decrypt(enc)
-    } catch {
+    if (!pat) {
       summary.skipped++
       continue
     }
@@ -174,14 +226,19 @@ export async function pollPrStates(opts: PollOptions = {}): Promise<PollSummary>
         continue
       }
 
+      // Apply the resolution to EVERY row pointing to this URL so a re-scan's
+      // duplicate Issue rows resolve together.
+      const ids = rows.map((r) => r.id)
+
       if (outcome === 'merged') {
-        await db.issue.update({ where: { id: issue.id }, data: { status: 'pr-merged' } })
+        await db.issue.updateMany({ where: { id: { in: ids } }, data: { status: 'pr-merged' } })
         summary.merged++
         continue
       }
 
-      // rejected — record the pattern + mark resolved.
-      const depName = readDepName(issue.diagnosis)
+      // rejected — record the pattern once (depName comes from any row),
+      // then resolve every duplicate.
+      const depName = readDepName(rows[0].diagnosis)
       if (depName) {
         await recordRejection({
           depName,
@@ -189,10 +246,15 @@ export async function pollPrStates(opts: PollOptions = {}): Promise<PollSummary>
           prUrl,
         })
       }
-      await db.issue.update({ where: { id: issue.id }, data: { status: 'pr-rejected' } })
+      await db.issue.updateMany({ where: { id: { in: ids } }, data: { status: 'pr-rejected' } })
       summary.rejected++
     } catch (err) {
-      summary.errors.push({ prUrl, reason: err instanceof Error ? err.message : String(err) })
+      // §5b honest classification — surface the REAL kind instead of a
+      // misleading "network/auth" catch-all. The dashboard toast reads this
+      // to tell the user "1 deleted, 2 auth-blocked" vs. one bucket count.
+      const kind = classifyPollError(err)
+      const reason = err instanceof Error ? err.message : String(err)
+      summary.errors.push({ prUrl, reason, kind })
     }
   }
 

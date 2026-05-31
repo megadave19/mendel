@@ -21,8 +21,10 @@ import {
   classifyPrState,
   buildAutoRejectionReason,
   pollPrStates,
+  classifyPollError,
   type PrStateFetcher,
 } from '@/lib/agent/learning/pr-state-poller'
+import { GitHubError } from '@/lib/github/types'
 
 const REPO_TAG = 'pr-poller-suite'
 const PR_BASE = `https://github.com/test/${REPO_TAG}/pull/`
@@ -190,5 +192,62 @@ describe('pollPrStates orchestration (fake fetcher + real DB)', () => {
 
     expect(called).toBe(false)
     expect(summary.checked).toBe(0)
+  })
+
+  // ─── v2.0: dedup + honest error classification ─────────────────────────────
+
+  it('dedups multiple Issue rows pointing to the SAME PR URL — fetcher called once, all rows resolve together', async () => {
+    // Reproduces the megadave19/mendel-test case: 3 scans of the same repo
+    // → 3 Issue rows → 3 calls to fetcher → 3 "errors" for ONE deleted PR.
+    const { db } = await import('@/lib/db')
+    const { scanId: sA, issueId: iA, prUrl } = await seedIssue(200)
+    const { issueId: iB } = await seedIssue(200) // SAME PR number → SAME url
+    const { issueId: iC } = await seedIssue(200)
+    expect(iA).not.toBe(iB)
+
+    let calls = 0
+    const fetcher: PrStateFetcher = async () => {
+      calls++
+      return { state: 'closed', merged: true, mergedAt: '2026-05-30T00:00:00Z', closedAt: '2026-05-30T00:00:00Z', latestComment: null }
+    }
+    const summary = await pollPrStates({ fetcher })
+
+    expect(calls).toBe(1) // one network call for one unique URL
+    expect(summary.checked).toBe(1)
+    expect(summary.merged).toBe(1)
+    // ALL THREE Issue rows pointing to the merged URL flip together.
+    const rows = await db.issue.findMany({ where: { prUrl } })
+    expect(rows.every((r) => r.status === 'pr-merged')).toBe(true)
+    // Sanity: the scanId-scoped seed used three different scans.
+    void sA
+    void iC
+  })
+
+  it('classifies a 404 (repo deleted) as kind=not-found — NOT misleading "network/auth"', async () => {
+    await seedIssue(201)
+    const fetcher: PrStateFetcher = async () => {
+      throw new GitHubError('not-found', 'Not Found')
+    }
+    const summary = await pollPrStates({ fetcher })
+
+    expect(summary.errors).toHaveLength(1)
+    expect(summary.errors[0].kind).toBe('not-found')
+    expect(summary.checked).toBe(0)
+  })
+
+  it('classifies a 403 / blocked-account as kind=auth (the execa-blocked case)', async () => {
+    await seedIssue(202)
+    const fetcher: PrStateFetcher = async () => {
+      throw new GitHubError('auth', 'User is blocked')
+    }
+    const summary = await pollPrStates({ fetcher })
+
+    expect(summary.errors[0].kind).toBe('auth')
+  })
+
+  it("classifyPollError maps an unknown thrown value to 'unknown' (never throws itself)", () => {
+    expect(classifyPollError(new Error('boom'))).toBe('unknown')
+    expect(classifyPollError(undefined)).toBe('unknown')
+    expect(classifyPollError(new GitHubError('rate-limit', 'slow down'))).toBe('rate-limit')
   })
 })

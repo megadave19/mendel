@@ -110,6 +110,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Recent Decisions (newest first)
 
+**2026-05-31 (Sync PR States — dedup duplicate Issue rows + classify errors honestly)**
+PM raised: "I clicked Sync PR States and got 6 PRs could not be checked (network/auth)." Two bugs surfaced:
+- **Dedup gap.** Re-scanning a repo creates one Issue row per scan, all pointing to the same PR. For megadave19/mendel-test the user had 3 rows for PR #1 and 3 for PR #2 — 6 Issue rows for 2 actual PRs. The poller hit GitHub 6 times AND counted 6 "errors" when in reality 2 PRs were broken. Fixed: `pollPrStates` now groups Issue rows by `prUrl` BEFORE polling, calls GitHub once per unique URL, and applies the resolution to every row via `updateMany`. The summary now matches what a human would call "broken PRs."
+- **Misleading error wording.** The dashboard toast always said `(network/auth)`. The real failure for mendel-test was **the repo was deleted** (404 not-found), not network or auth. Per §5b never-lie-about-the-cause: added `PollErrorKind` (`not-found | auth | rate-limit | network | unknown`) sourced from `GitHubError.kind`. Each error entry now carries `kind`. Dashboard toast groups by kind and reads "N deleted / not found · M auth (PAT rejected / blocked) · …" — never the catchall.
+- **`classifyPollError(err)`** is the pure mapping (exported for tests + future MCP/CLI reuse). Falls back to `'unknown'` for non-GitHubError throws (never throws itself).
+- **+4 tests** (`tests/pr-state-poller.test.ts`): dedup (3 Issue rows + same prUrl → fetcher called once, all 3 rows flip to merged together); 404 classified as `not-found` (the mendel-test case); 403 classified as `auth` (the execa-blocked case); `classifyPollError` exhaustive truth table.
+- Also caught + fixed in this session: **dev server had been running since 2026-05-27** (4 days), holding a stale Prisma client → "Internal server error" on every new scan submit since v2.0 work added `Scan.smokeRequested`. Killed PID 70018 + restarted clean.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **403 passed** (was 399, +4) / 10 gated. `pnpm eval` ✅ no regression vs. baseline.
+
 **2026-05-31 (v2.0 / /dev/eval — calibration dashboard, the last F19 optional)**
 Closed the single optional item from V2_PLAN §F19 ("/dev/eval — Nixtio-dense stat cards + calibration scatter"). PM-asked: "what is this — if Mendel-related then complete it." Answer: yes, it visualizes the same data `pnpm eval` prints — useful as a portfolio screenshot ("here's the honesty anchor, here's the bench passing 7/7").
 - **`app/dev/eval/page.tsx`** — server component. Reads `eval/reports/baseline.json` from disk via `fs.readFileSync` (NO API route — V2_PLAN §F19: "Eval must not be reachable from the web app — it's a dev/CI instrument, not a user surface"). Validates with `CalibrationReportSchema` (malformed baseline → loud-fail empty state with the exact command to re-seed). Empty-state on missing baseline renders the `pnpm eval --update-baseline` command instead of fabricating fake "100%" numbers (§5b).

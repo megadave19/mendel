@@ -99,7 +99,13 @@ export default function DashboardPage() {
       const res = await fetch('/api/poll-prs', { method: 'POST' })
       const data = (await res.json()) as {
         ok?: boolean
-        summary?: { checked: number; merged: number; rejected: number; stillOpen: number; errors: unknown[] }
+        summary?: {
+          checked: number
+          merged: number
+          rejected: number
+          stillOpen: number
+          errors: Array<{ prUrl: string; reason: string; kind?: string }>
+        }
         error?: unknown
       }
       if (!res.ok || !data.ok || !data.summary) {
@@ -107,13 +113,30 @@ export default function DashboardPage() {
         return
       }
       const s = data.summary
-      if (s.checked === 0) {
+      if (s.checked === 0 && s.errors.length === 0) {
         toast.info('No open Mendel PRs to check.')
-      } else {
+      } else if (s.checked > 0) {
         toast.success(`Checked ${s.checked} PR${s.checked !== 1 ? 's' : ''} · ${s.merged} merged · ${s.rejected} rejected · ${s.stillOpen} still open`)
       }
       if (s.errors.length > 0) {
-        toast.error(`${s.errors.length} PR${s.errors.length !== 1 ? 's' : ''} could not be checked (network/auth).`)
+        // v2.0 §5b — surface the REAL failure reason instead of one-size-fits-all
+        // "network/auth". `not-found` means the repo / PR was deleted on GitHub;
+        // `auth` means the PAT was rejected (revoked / scope / blocked account).
+        const counts: Record<string, number> = {}
+        for (const e of s.errors) counts[e.kind ?? 'unknown'] = (counts[e.kind ?? 'unknown'] ?? 0) + 1
+        const labels: Record<string, string> = {
+          'not-found':  'deleted / not found',
+          'auth':       'auth (PAT rejected / blocked)',
+          'rate-limit': 'rate-limited',
+          'network':    'network',
+          'unknown':    'unknown',
+        }
+        const parts = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, n]) => `${n} ${labels[k] ?? k}`)
+        toast.error(
+          `${s.errors.length} PR${s.errors.length !== 1 ? 's' : ''} unchecked — ${parts.join(' · ')}`,
+        )
       }
       await loadScans()
     } catch {
