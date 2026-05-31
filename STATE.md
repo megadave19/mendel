@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-05-31
-> **Current phase:** **v2.0 CLOSED** — F19 + F20 + SandboxProvider + persist-wire-through + real-container tests all landed. Bench 7/7 100%/100%. Next: **v2.1 (F21 monorepo + F22 inspector)** per V2_PLAN §F21.
+> **Current phase:** **v2.0 FULLY CLOSED** — F19 + F20 + SandboxProvider + persist-wire-through + real-container tests + `/dev/eval` calibration dashboard all landed. Bench 7/7 100%/100%. Next: **v2.1 (F21 monorepo + F22 inspector)** per V2_PLAN §F21.
 
 ---
 
@@ -109,6 +109,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-31 (v2.0 / /dev/eval — calibration dashboard, the last F19 optional)**
+Closed the single optional item from V2_PLAN §F19 ("/dev/eval — Nixtio-dense stat cards + calibration scatter"). PM-asked: "what is this — if Mendel-related then complete it." Answer: yes, it visualizes the same data `pnpm eval` prints — useful as a portfolio screenshot ("here's the honesty anchor, here's the bench passing 7/7").
+- **`app/dev/eval/page.tsx`** — server component. Reads `eval/reports/baseline.json` from disk via `fs.readFileSync` (NO API route — V2_PLAN §F19: "Eval must not be reachable from the web app — it's a dev/CI instrument, not a user surface"). Validates with `CalibrationReportSchema` (malformed baseline → loud-fail empty state with the exact command to re-seed). Empty-state on missing baseline renders the `pnpm eval --update-baseline` command instead of fabricating fake "100%" numbers (§5b).
+- Layout: 4 Nixtio stat cards (Fixtures · Passed · Bucket accuracy · In-range) → side-by-side **Calibration Scatter** (SVG, server-renderable; expected on X, observed on Y; cyan dashed diagonal = perfect calibration; bucket-boundary grid lines at 60/80; lime dot = pass, danger = fail) + **3×3 Bucket Confusion** matrix (diagonal lime, off-diagonal danger) → Per-fixture table (status · id · package · expected · observed · ms). Footer carries the source-of-truth file path + the two regen commands.
+- Dev surface — `/dev/*`, NOT in the authed app nav, no mascot, no auth, no inputs. Mirrors the existing `/dev/mascot` precedent.
+- **Verified live:** `curl http://localhost:3000/dev/eval` → 200, 92KB, all headline strings present (release label `v2.0-with-F20`, real fixture id `axios-0.24-to-0.27`, "Bucket accuracy", "Calibration scatter") — data flows end-to-end against the committed baseline.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **399 passed** / 10 gated (unchanged — page is server-only, no test regression).
+- **v2.0 now FULLY closed** — every V2_PLAN §F19/F20/supporting-work item shipped. Next: **v2.1 (F21 monorepo + F22 inspector)** per V2_PLAN §F21.
 
 **2026-05-31 (v2.0 closeout — persist + thread `smokeRequested` to UI; real-container smoke tests caught a real bug)**
 Closed the two F20 follow-ons:
