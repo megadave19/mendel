@@ -16,14 +16,11 @@ import { diagnoseIssue } from './phases/diagnose'
 import { patchFileSmart } from './patching'
 import { submitDraftPR } from './phases/submit'
 import { assessContributionEligibility, gateSubmission, type EligibilityVerdict } from './eligibility'
-import {
-  runPhaseA,
-  runPhaseB,
-  cleanupVolume,
-  ensureSandboxImage,
-  checkSandboxReadiness,
-  volumeName,
-} from '@/lib/sandbox/executor'
+// v2.0: the runner no longer imports executor functions directly — it goes
+// through the SandboxProvider interface (cloud-readiness, V2_PLAN §F19
+// supporting work). volumeName is a pure helper, kept as a static import.
+import { volumeName } from '@/lib/sandbox/executor'
+import { getSandboxProvider } from '@/lib/sandbox/provider'
 import { detectPackageManager, hasTsConfig, detectTestRunner, explainInstallFailure } from '@/lib/sandbox/detect'
 import { db } from '@/lib/db'
 import { persistIssueData } from './issue-vm'
@@ -293,8 +290,13 @@ export async function runScan(
       throw new Error('Docker Desktop is not running. Start Docker and re-run the scan.')
     }
 
+    // v2.0: route every sandbox call through the provider. Today
+    // LocalDockerProvider wraps the same executor functions — zero behavior
+    // change — but the seam is what lets v3 swap in a hosted backend.
+    const sandbox = getSandboxProvider()
+
     log('Preparing sandbox image...')
-    await ensureSandboxImage()
+    await sandbox.ensureReady()
 
     // Sandbox-readiness pre-flight (2026-05-29). Verify the image can actually
     // run THIS repo's package manager (+ git/node) BEFORE the per-dep loop —
@@ -303,7 +305,7 @@ export async function runScan(
     // minutes of wasted analysis (the ta-vivo case). Answers "why did the
     // pre-flight let analysis proceed?" — the earlier pre-flight only checked
     // PR-DELIVERY capability; this checks VERIFICATION capability.
-    const readiness = await checkSandboxReadiness(pmDetected)
+    const readiness = await sandbox.checkReadiness(pmDetected)
     if (!readiness.ok) {
       log(`⚠ Sandbox not ready for this repo — stopping before analysis.`)
       log(readiness.reason)
@@ -480,7 +482,7 @@ export async function runScan(
       }
 
       log('Running Phase A — installing dependencies (iptables-allowlisted egress)...')
-      const phaseA = await runPhaseA({
+      const phaseA = await sandbox.runInstall({
         repoPath, scanId: verifyScanId, packageManager: pm,
         allowlistHosts: allowlist.hosts,
       })
@@ -496,7 +498,7 @@ export async function runScan(
       if (phaseA.success) {
         log('Running Phase B — typecheck in --network=none sandbox...')
         const vol = volumeName(verifyScanId)
-        const phaseB = await runPhaseB(
+        const phaseB = await sandbox.runTest(
           { repoPath, scanId: verifyScanId, packageManager: pm },
           vol,
         )
@@ -507,7 +509,7 @@ export async function runScan(
           output: phaseB.stdout.slice(-500),
         })
         verificationPassed = phaseB.typecheckPassed
-        await cleanupVolume(vol)
+        await sandbox.teardown(vol)
 
         if (!phaseB.typecheckPassed) {
           log('⚠ TypeCheck failed — PR will open as Draft with verification warning')

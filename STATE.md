@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-05-31
-> **Current phase:** **v2.0 IN PROGRESS** — F19 eval bench landed + committed baseline. Next: SandboxProvider refactor → F20 Phase C smoke-test.
+> **Current phase:** **v2.0 IN PROGRESS** — F19 eval bench + SandboxProvider refactor landed. Next: **F20 Phase C smoke-test** (hard prereq for v2.3 auto-merge).
 
 ---
 
@@ -109,6 +109,16 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-31 (v2.0 / SandboxProvider refactor — cloud-readiness seam for v3)**
+Second v2.0 piece done. The runner used to call Docker functions in `lib/sandbox/executor.ts` directly — that coupled the agent to one specific runtime. v3 needs to swap in a hosted sandbox (E2B / Fly Machines) without rewriting the agent. Now a single seam.
+- **`lib/sandbox/provider.ts`** (new) — `SandboxProvider` interface with 5 methods: `ensureReady` · `checkReadiness(pm)` · `runInstall(config)` · `runTest(config, vol)` · `teardown(vol)`. **No Docker-specific concepts in any signature** (no image names, container ids, or paths — everything is described in install/test/teardown terms). Cloud-readiness contract per CLAUDE.md §2.1 / V2_PLAN §2.1.
+- **`LocalDockerProvider`** — delegates every method to the existing executor functions verbatim. Pure refactor, zero behavior change. Today's executor stays untouched.
+- **`getSandboxProvider()`** — singleton factory. v2.x always returns `LocalDockerProvider`; v3 will dispatch by env (`MENDEL_SANDBOX=cloud` → `HostedE2BProvider`). One chokepoint = clean swap.
+- **`lib/agent/runner.ts`** — migrated all 5 sandbox call sites to `sandbox.X()`. Only `volumeName` (a pure helper) still imports directly from `executor`. Phase C (F20) will plug into the same seam without further runner changes.
+- **`tests/sandbox-provider.test.ts`** — 10 contract tests: every method delegates with the right args; `name` identifies the impl; factory returns a singleton; reset helper drops the cache. `vi.hoisted` pattern used so `vi.mock` factory can reference the mock fns at hoist time.
+- **v1.5 gate per V2_PLAN §F19**: full v1.5 suite passes **unchanged** — typecheck ✅ lint ✅ `pnpm test` ✅ **367 passed** (was 357, +10 provider tests). `pnpm eval` ran clean: **no regression vs. baseline** (100% bucket + 100% range, unchanged from F19's commit).
+- **Next:** F20 — Phase C smoke-test. The hard prereq for v2.3 auto-merge (CLAUDE.md §5c rule 4: "Tests AND smoke pass — F20 is a hard dependency"). Will plug into `SandboxProvider.runSmoke(...)` (new method) with the same network=none isolation as Phase B (CLAUDE.md §5 rule 16).
 
 **2026-05-31 (v2.0 / F19 Eval Bench landed — calibration honesty anchor committed)**
 First piece of v2.0 done. The bench loads JSON fixtures, runs the REAL `calculateConfidence` (no copy — the runtime function), scores observed-vs-expected, and emits a markdown + JSON `CalibrationReport`. The committed `eval/reports/baseline.json` is now the honesty anchor per CLAUDE.md §5b v2 rule 2 — every future v2 release must re-run the bench and not regress vs. it.
