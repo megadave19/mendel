@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-05-31
-> **Current phase:** **v2.0 ENGINEERING COMPLETE** — F19 eval bench + SandboxProvider refactor + F20 Phase C smoke-test all landed. Pending: persist `smokeRequested` on Scan + thread `smokeEnabled` into StageLane (small visual polish). Then v2.1.
+> **Current phase:** **v2.0 CLOSED** — F19 + F20 + SandboxProvider + persist-wire-through + real-container tests all landed. Bench 7/7 100%/100%. Next: **v2.1 (F21 monorepo + F22 inspector)** per V2_PLAN §F21.
 
 ---
 
@@ -109,6 +109,14 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-05-31 (v2.0 closeout — persist + thread `smokeRequested` to UI; real-container smoke tests caught a real bug)**
+Closed the two F20 follow-ons:
+1. **Persist + thread `smokeRequested`.** New `Scan.smokeRequested Boolean @default(false)` (Prisma push, no migration history per project convention). `POST /api/scans` writes it from the request body. `GET /api/scans/[id]` returns it via `...rest`. `useScanView` reads it via a small mount-effect (separate from the done-gated enrichment fetch — the SMOKE lane needs to render DURING the live scan, not only after `done`). `<StageLane phase={scan.phase} smokeEnabled={scan.smokeRequested} />` on `/scan/[id]`. New Scan UI gains a default-ON checkbox in the Advanced section (V2_PLAN §F20: "default true for v2") + `JOURNEY` becomes conditional (SMOKE row appears between VERIFY and DELIVER when smoke is enabled). v1.5-shaped scans render exactly as before.
+2. **Real-container smoke tests** (`tests/sandbox-smoke-container.test.ts`, gated `pnpm test:docker`). Three real fixtures: boot-success (Node prints "Listening on port" then exits 0 → `booted=true reason='ready-pattern-matched'`), boot-crash (Node throws → `booted=false reason='crashed-non-zero-exit'`), no-boot (lib-only package.json → `attempted=false`, fast path, no Docker invocation). Real disk fixtures via `mkdtempSync`; ephemeral named volume created/cleaned up in beforeAll/afterAll; all spawn paths use `execFile` (no shell, CLAUDE.md §5 rule 18).
+- **§11b.1 win:** the real-container test **caught a real bug** before it shipped. `buildPhaseCDockerCommand` was using `--user=node` without `--entrypoint=sh` → the image's setup-allowlist.sh entrypoint ran first as `node` and failed `setgroups: Operation not permitted`. Fix: add `--entrypoint=sh` (Phase B already did this; I missed it on Phase C). The unit test for the flag string was updated to pin both `--entrypoint=sh` and the new shape (`-c '<cmd>'` not `sh -c '<cmd>'`). This is exactly the class of bug §11b.1 exists for — would have hit every real F20 scan and silently capped confidence at 50.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **399 passed** (was 398, +1 entrypoint pinning) / 10 gated. `DOCKER_INTEGRATION=1 pnpm test sandbox-smoke-container` ✅ **3/3 in 2.4s** against live Docker. `pnpm eval` ✅ 7/7 100%/100% (no regression vs. v2.0 baseline).
+- **v2.0 is now structurally closed.** Open: optional `/dev/eval` page from V2_PLAN §F19 (it's marked "optional, recommended for portfolio" — not blocking v2.1). Next: **v2.1 / F21 Monorepo support** + **F22 inspector** per V2_PLAN §F21.
 
 **2026-05-31 (v2.0 / F20 Phase C Smoke-Test — boot verification, the hard prereq for auto-merge)**
 Third v2.0 piece. Raises verification from "tests pass" to "the app still boots." Hard prereq for v2.3 auto-merge per CLAUDE.md §5c rule 4: "Tests AND smoke pass — F20 is a hard dependency of F24."

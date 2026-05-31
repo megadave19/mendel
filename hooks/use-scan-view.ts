@@ -75,6 +75,11 @@ function useRealScanView(id: string): MockScanState {
   const [persistedFailure, setPersistedFailure] = useState<{ failed: boolean; cancelled: boolean; errorMessage: string | null }>({
     failed: false, cancelled: false, errorMessage: null,
   })
+  // v2.0 / F20 — drives whether StageLane renders the 5th (SMOKE) lane. We
+  // read this from the scan's persisted `smokeRequested` flag so a live scan
+  // that opted in shows the SMOKE lane the moment the page mounts, even
+  // before the first Phase C verify event arrives.
+  const [smokeRequested, setSmokeRequested] = useState(false)
 
   // Derive the view model from the streamed entries.
   const derived = useMemo(() => {
@@ -122,6 +127,23 @@ function useRealScanView(id: string): MockScanState {
   }, [entries])
 
   // On completion, fetch persisted issues for full detail (diagnosis/diff/notAnalyzed)
+  // v2.0 / F20 — read smokeRequested at mount so the StageLane can render the
+  // 5th lane DURING a live scan (not only after `done`). Tiny payload (one
+  // boolean), one round-trip; the done-gated enrichment fetch below still
+  // fires later to populate issues + persisted failure/elapsed.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    fetch(`/api/scans/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { smokeRequested?: boolean } | null) => {
+        if (cancelled || !data) return
+        if (typeof data.smokeRequested === 'boolean') setSmokeRequested(data.smokeRequested)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [id])
+
   // and the real start/complete timestamps for playback elapsed-time (Fix B1).
   useEffect(() => {
     if (!done) return
@@ -221,6 +243,7 @@ function useRealScanView(id: string): MockScanState {
     running: !done,
     done,
     replay: () => window.location.reload(),
+    smokeRequested,
   }
 }
 

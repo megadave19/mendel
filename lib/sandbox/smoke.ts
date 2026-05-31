@@ -171,8 +171,12 @@ export function resolvePhaseCReason(input: {
  *   --network=none   (NEVER bridge — egress would invalidate the honesty bar)
  *   --memory=2g      (matches A/B)
  *   --user=node      (non-root)
- *   --read-only on the repo bind would be nice but Phase B already enforces
- *     it via volume semantics + the install volume is dedicated.
+ *   --entrypoint=sh  Phase A's image ENTRYPOINT is setup-allowlist.sh which
+ *                    drops privileges via su-exec; under --user=node that
+ *                    setgroups call is denied (real-container test caught
+ *                    this — §11b.1 win). Bypass it the same way Phase B
+ *                    does — Phase C is --network=none anyway so no allowlist
+ *                    setup is meaningful here.
  */
 export function buildPhaseCDockerCommand(input: {
   repoPath: string
@@ -185,12 +189,13 @@ export function buildPhaseCDockerCommand(input: {
     '--network=none',
     `--memory=${MEMORY_CAP}`,
     '--user=node',
+    '--entrypoint=sh',
     '-e CI=true',
     `--volume="${input.repoPath}:/repo"`,
     `--volume="${input.vol}:/repo/node_modules"`,
     '--workdir=/repo',
     IMAGE_NAME,
-    `sh -c ${shArg(input.bootCommand)}`,
+    `-c ${shArg(input.bootCommand)}`,
   ].join(' ')
 }
 

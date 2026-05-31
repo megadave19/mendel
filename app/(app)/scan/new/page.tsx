@@ -88,13 +88,22 @@ const CONSTRAINTS = [
   'Max 3 deps patched per scan',
 ]
 
-const JOURNEY: { phase: string; what: string; sub: string; accent: string }[] = [
+interface JourneyStep { phase: string; what: string; sub: string; accent: string }
+const JOURNEY_BASE: JourneyStep[] = [
   { phase: 'SCAN',     what: 'Manifest + registry',   sub: 'reads package.json, queries npm for latest', accent: 'var(--accent-secondary)' },
   { phase: 'DIAGNOSE', what: 'Changelog + AST',       sub: 'parses CHANGELOG.md, cross-refs usage',      accent: 'var(--accent-secondary)' },
   { phase: 'PATCH',    what: 'Rewrite + format',      sub: 'generates migration patches, runs Prettier', accent: 'var(--accent-primary)' },
   { phase: 'VERIFY',   what: 'Docker sandbox',        sub: 'two-phase install + test in isolation',      accent: 'var(--accent-warning)' },
   { phase: 'DELIVER',  what: 'Draft PR',              sub: 'opens on GitHub with confidence framing',    accent: 'var(--accent-primary)' },
 ]
+const JOURNEY_SMOKE_STEP: JourneyStep = {
+  phase: 'SMOKE', what: 'Boot test (Phase C)', sub: 'boots patched app, --network=none (v2.0 / F20)', accent: 'var(--accent-warning)',
+}
+function journeyFor(smokeOn: boolean): JourneyStep[] {
+  if (!smokeOn) return JOURNEY_BASE
+  // Insert SMOKE between VERIFY (idx 3) and DELIVER (idx 4).
+  return [...JOURNEY_BASE.slice(0, 4), JOURNEY_SMOKE_STEP, JOURNEY_BASE[4]]
+}
 
 export default function NewScanPage() {
   useDocumentTitle('New Scan')
@@ -109,6 +118,10 @@ export default function NewScanPage() {
      Settings default; edits here are scoped to this scan only. */
   const [tier2Hosts, setTier2Hosts] = useState<string[]>([])
   const [externalAck, setExternalAck] = useState(false)
+  // v2.0 / F20 — opt into Phase C (smoke-test). Default on so v2.x scans
+  // benefit from the higher verification ceiling out of the box; opt-out
+  // for users who'd rather skip the extra ~30-60s a boot adds.
+  const [smokeTest, setSmokeTest] = useState(true)
   const [allowlistOpen, setAllowlistOpen] = useState(false)
   const [hostDraft, setHostDraft] = useState('')
   const [hostError, setHostError] = useState<string | null>(null)
@@ -243,6 +256,8 @@ export default function NewScanPage() {
           // §5c Contribution Eligibility — only opens PRs on a repo you don't
           // own when you've confirmed it welcomes them (else: report only).
           ...(externalAck ? { externalContributionAck: true } : {}),
+          // v2.0 / F20 — opt into Phase C boot verification.
+          ...(smokeTest ? { smokeTest: true } : {}),
         }),
       })
       if (!res.ok) {
@@ -412,6 +427,26 @@ export default function NewScanPage() {
                 {hostError && (
                   <p role="alert" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--accent-danger)' }}>✕ {hostError}</p>
                 )}
+                {/* v2.0 / F20 — Phase C (boot test) toggle. Default ON.
+                    The boot runs --network=none in the sandbox; adds ~30-60s. */}
+                <div style={{ paddingTop: '0.625rem', borderTop: '1px dashed var(--border-subtle)' }}>
+                  <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    <input
+                      type="checkbox"
+                      checked={smokeTest}
+                      onChange={(e) => setSmokeTest(e.target.checked)}
+                      style={{ marginTop: '0.15rem', flexShrink: 0, accentColor: 'var(--accent-warning)' }}
+                    />
+                    <span>
+                      Boot test (Phase C) — <strong>on</strong> by default
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {' '}· after tests pass, attempt to boot the patched app in
+                        the sandbox (--network=none, ≤90s). A boot failure caps
+                        confidence at 50 — honest evidence the upgrade broke the app.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -419,7 +454,7 @@ export default function NewScanPage() {
           {/* What Mendel will do — fills the prior empty bottom with real product context */}
           <PanelFrame title="What Mendel Will Do" accent="var(--accent-secondary)">
             <ol style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginTop: '0.25rem' }}>
-              {JOURNEY.map((j, i) => (
+              {journeyFor(smokeTest).map((j, i) => (
                 <li key={j.phase} style={{
                   display: 'grid',
                   gridTemplateColumns: '2rem 5.5rem minmax(0, 1fr)',

@@ -102,6 +102,11 @@ export interface MockScanState {
   running: boolean
   done: boolean
   replay: () => void
+  /**
+   * v2.0 / F20 — true when this scan opted into Phase C smoke-test. Drives
+   * whether StageLane renders the 5th lane. Default false → v1.5 4-lane view.
+   */
+  smokeRequested: boolean
 }
 
 export function useMockScan(autoStart = true): MockScanState {
@@ -188,5 +193,5 @@ export function useMockScan(autoStart = true): MockScanState {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay }
+  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay, smokeRequested: false }
 }

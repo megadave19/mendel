@@ -402,7 +402,7 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
         {/* Center — stage lane + issue cards + streaming log */}
         <div style={{ background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '1.25rem 1.25rem 1rem', borderBottom: '1px solid var(--border-subtle)' }}>
-            <StageLane phase={scan.phase} />
+            <StageLane phase={scan.phase} smokeEnabled={scan.smokeRequested} />
           </div>
 
           {/* Issue cards (S5 inline) — stream in as detected; expand for S6/S7.

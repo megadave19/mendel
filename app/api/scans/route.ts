@@ -54,6 +54,8 @@ export async function POST(req: NextRequest) {
         status: 'queued',
         schemaVersion: '1.0',
         encryptedPat,
+        // v2.0 / F20 — persist so /scan/[id] can render the 5th lane.
+        smokeRequested: body.smokeTest ?? false,
       },
     })
 

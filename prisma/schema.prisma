@@ -29,6 +29,10 @@ model Scan {
   /// JSON-stringified ScanConfidenceSummary (see lib/agent/confidence/summary.ts).
   /// Null for v1.0 scans + scans where no issue had calibrated confidence data.
   confidenceSummary String?
+  /// v2.0 / F20 — true when this scan opted into Phase C smoke-test.
+  /// Read by /scan/[id] to know whether to render the 5th StageLane.
+  /// Default false → v1.5 scans render the 4-lane view unchanged.
+  smokeRequested Boolean @default(false)
   issues        Issue[]
 }
 

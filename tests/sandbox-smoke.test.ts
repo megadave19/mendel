@@ -164,6 +164,10 @@ describe('buildPhaseCDockerCommand — locked Docker flags', () => {
     expect(built).toContain('--user=node')
   })
 
+  it('bypasses the image ENTRYPOINT with --entrypoint=sh (real-container test caught su-exec failure under --user=node)', () => {
+    expect(built).toContain('--entrypoint=sh')
+  })
+
   it('removes the container after run (--rm) — no leftover state per CLAUDE §5 rule 11', () => {
     expect(built).toContain('--rm')
   })
@@ -174,7 +178,8 @@ describe('buildPhaseCDockerCommand — locked Docker flags', () => {
   })
 
   it('shell-quotes the boot command via shArg (no metachar injection)', () => {
-    expect(built).toMatch(/sh -c 'pnpm run start'/)
+    // With --entrypoint=sh, the trailing arg is just `-c '<cmd>'` (no leading `sh`).
+    expect(built).toMatch(/-c 'pnpm run start'/)
   })
 })
 
