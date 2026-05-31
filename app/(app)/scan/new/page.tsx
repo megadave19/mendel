@@ -18,6 +18,7 @@ import { PanelFrame } from '@/components/phase-d/PanelFrame'
 import { useToast } from '@/components/shared/toast'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { TIER_1_HOSTS, Tier2HostSchema } from '@/lib/sandbox/iptables-allowlist'
+import type { EligibilityPreview } from '@/lib/agent/eligibility-preview'
 
 /* v1.5 W#8 Push 2 — tier-2 allowlist default, written by Settings. Read here
    as the per-scan starting point; per-scan edits do NOT mutate the saved
@@ -111,6 +112,10 @@ export default function NewScanPage() {
   const [allowlistOpen, setAllowlistOpen] = useState(false)
   const [hostDraft, setHostDraft] = useState('')
   const [hostError, setHostError] = useState<string | null>(null)
+  // Live eligibility preview (CLAUDE.md §5c.1 — informed-consent bridge).
+  // Mirrors the scan-time gate so the user's ack is informed, not blind.
+  const [preview, setPreview] = useState<EligibilityPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   // Auth gate (Fix #3 audit-2 — preserved).
   useEffect(() => {
@@ -152,6 +157,44 @@ export default function NewScanPage() {
 
   const parsed = parseGitHubUrl(repoUrl)
   const isValid = !!parsed
+
+  // Debounced eligibility preview. Re-runs whenever a complete owner/repo
+  // parses out of the URL — earlier edits abort their in-flight fetch via
+  // AbortController so a fast typist never sees stale results overwrite fresh.
+  useEffect(() => {
+    if (!parsed) { setPreview(null); setPreviewLoading(false); return }
+    const pat = sessionStorage.getItem('mendel_pat') ?? ''
+    if (!pat) return // gated separately by the auth redirect above
+    const ctrl = new AbortController()
+    const t = window.setTimeout(async () => {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch('/api/repos/eligibility-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pat, owner: parsed.owner, repo: parsed.repo }),
+          signal: ctrl.signal,
+        })
+        if (!res.ok) { setPreview(null); return }
+        const data = (await res.json()) as EligibilityPreview
+        setPreview(data)
+      } catch {
+        // Network/abort — leave preview null; runtime gate is the safety net.
+      } finally {
+        setPreviewLoading(false)
+      }
+    }, 600)
+    return () => { window.clearTimeout(t); ctrl.abort() }
+    // parsed is a fresh object each render — depend on its primitives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed?.owner, parsed?.repo])
+
+  // Auto-clear ack when it can no longer help (owned/blocked/unknown) so the
+  // box never lingers checked against a verdict where it has no effect.
+  useEffect(() => {
+    if (preview && !preview.ackNeeded && externalAck) setExternalAck(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview])
 
   /* Per-scan allowlist add/remove. Validation mirrors the server's
      Tier2HostSchema so we never POST a host the server would reject. */
@@ -264,7 +307,7 @@ export default function NewScanPage() {
                     borderLeft: `1px solid ${borderColor}`, borderRight: 'none', transition: 'border-color 0.2s',
                   }}
                 />
-                <button type="submit" disabled={!isValid || status === 'starting'} className="btn-primary" style={{ borderRadius: 0, padding: '0.875rem 1.5rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <button type="submit" disabled={!isValid || status === 'starting' || preview?.decision === 'blocked'} className="btn-primary" style={{ borderRadius: 0, padding: '0.875rem 1.5rem', whiteSpace: 'nowrap', flexShrink: 0 }} title={preview?.decision === 'blocked' ? 'This repo is hard-blocked by its own policy — scan disabled.' : undefined}>
                   {status === 'starting' ? 'INITIALIZING…' : 'Scan →'}
                 </button>
               </div>
@@ -278,23 +321,23 @@ export default function NewScanPage() {
                   ✕ {errorMsg}
                 </motion.p>
               )}
-              {/* §5c Contribution Eligibility — opening PRs on a repo you don't
-                  own requires explicitly confirming it welcomes them. Without
-                  this, a non-owned repo is analyzed but gets NO PR (report only). */}
-              <label style={{ marginTop: '0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                <input
-                  type="checkbox"
-                  checked={externalAck}
-                  onChange={(e) => setExternalAck(e.target.checked)}
-                  style={{ marginTop: '0.15rem', flexShrink: 0, accentColor: 'var(--accent-secondary)' }}
+              {/* §5c.1 Eligibility Preview — informed-consent bridge.
+                  Live verdict on the repo's contribution norms BEFORE the user
+                  ticks the ack box. Reads CONTRIBUTING / dependabot / renovate
+                  via the GitHub Contents API; falls back gracefully on rate
+                  limits or auth failures (runtime gate is still the safety net). */}
+              {parsed && previewLoading && !preview && (
+                <p style={{ marginTop: '0.875rem', fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+                  · checking repo contribution norms…
+                </p>
+              )}
+              {parsed && preview && (
+                <EligibilityPreviewBlock
+                  preview={preview}
+                  externalAck={externalAck}
+                  setExternalAck={setExternalAck}
                 />
-                <span>
-                  This repo <strong>welcomes dependency PRs</strong> — I&apos;ve read its CONTRIBUTING &amp; Code of Conduct.{' '}
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Leave unchecked for repos you don&apos;t maintain — Mendel will analyze and report, but won&apos;t open a PR.
-                  </span>
-                </span>
-              </label>
+              )}
             </PanelFrame>
           </form>
 
@@ -460,6 +503,127 @@ export default function NewScanPage() {
           </div>
         </aside>
       </div>
+    </div>
+  )
+}
+
+// ── Eligibility preview block (CLAUDE.md §5c.1) ──────────────────────────────
+// Color rules: lime = owned (full autonomy), cyan = external + welcome (PRs
+// gated on ack), amber = unknown/degraded, red = hard-blocked (no override).
+function EligibilityPreviewBlock(props: {
+  preview: EligibilityPreview
+  externalAck: boolean
+  setExternalAck: (v: boolean) => void
+}) {
+  const { preview, externalAck, setExternalAck } = props
+  const { decision, signals, linkableIssue, degraded, reason, ackNeeded } = preview
+
+  // Pick a visual treatment without lying about state.
+  const tone: { color: string; label: string; headline: string } = (() => {
+    if (decision === 'owned') {
+      return { color: 'var(--accent-primary)', label: 'OWNED', headline: 'Your repo — full autonomy' }
+    }
+    if (decision === 'blocked') {
+      return { color: 'var(--accent-danger)', label: 'BLOCKED', headline: 'Hard-blocked by repo policy' }
+    }
+    if (decision === 'external') {
+      return { color: 'var(--accent-secondary)', label: 'EXTERNAL', headline: 'External repo' }
+    }
+    return { color: 'var(--accent-warning)', label: 'UNKNOWN', headline: 'Couldn’t preview' }
+  })()
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        marginTop: '0.875rem',
+        border: `1px solid ${tone.color}`,
+        background: 'var(--bg-1)',
+        padding: '0.75rem 0.875rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.5rem', fontWeight: 700,
+          letterSpacing: '0.18em', textTransform: 'uppercase', color: tone.color,
+          padding: '0.15rem 0.4rem', border: `1px solid ${tone.color}`,
+        }}>
+          {tone.label}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-primary)' }}>
+          {tone.headline}
+        </span>
+        {degraded && (
+          <span title="Could not read every governance file — runtime gate still applies." style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>
+            · partial
+          </span>
+        )}
+      </div>
+
+      {/* Signal grid — only render lines that carry information. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+        {signals.depAutomation && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--accent-danger)' }}>
+            · already automates deps via <strong>{signals.depAutomation}</strong> — Mendel PRs would be redundant noise
+          </p>
+        )}
+        {signals.contributingRedFlag && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--accent-danger)' }}>
+            · CONTRIBUTING discourages drive-by dep PRs: <em>“{signals.contributingRedFlag}”</em>
+          </p>
+        )}
+        {!signals.depAutomation && !signals.contributingRedFlag && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+            · {signals.hasContributing ? 'CONTRIBUTING.md present (no red-flags)' : 'no CONTRIBUTING.md found'}
+            {' · '}
+            {signals.hasCodeOfConduct ? 'CODE_OF_CONDUCT present' : 'no CoC found'}
+          </p>
+        )}
+        {linkableIssue && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--accent-secondary)' }}>
+            · will link PR to{' '}
+            <a href={linkableIssue.url} target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--accent-secondary)', textDecoration: 'underline' }}>
+              #{linkableIssue.number}
+            </a>
+            {' '}— {linkableIssue.title.slice(0, 80)}
+          </p>
+        )}
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          {reason}
+        </p>
+      </div>
+
+      {/* Conditional ack — ONLY shown when ticking it would actually change
+          the decision (i.e. external + welcome). On owned/blocked we hide the
+          checkbox entirely so the user can't tick something inert. */}
+      {ackNeeded && (
+        <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', lineHeight: 1.5, paddingTop: '0.4rem', borderTop: '1px dashed var(--border-subtle)' }}>
+          <input
+            type="checkbox"
+            checked={externalAck}
+            onChange={(e) => setExternalAck(e.target.checked)}
+            style={{ marginTop: '0.15rem', flexShrink: 0, accentColor: tone.color }}
+          />
+          <span>
+            I&apos;ve read this repo&apos;s CONTRIBUTING &amp; Code of Conduct — it <strong>welcomes</strong> dependency PRs.{' '}
+            <span style={{ color: 'var(--text-muted)' }}>
+              {externalAck
+                ? 'Mendel will open a PR if the upgrade clears high confidence + passing verification.'
+                : 'Leave unchecked → Mendel analyzes and reports, but won’t open a PR.'}
+            </span>
+          </span>
+        </label>
+      )}
+      {decision === 'blocked' && (
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', paddingTop: '0.4rem', borderTop: '1px dashed var(--border-subtle)' }}>
+          Scanning is disabled for this repo. Acknowledgement can&apos;t override repo-policy blocks.
+        </p>
+      )}
     </div>
   )
 }
