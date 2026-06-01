@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-01T18:19:34.353Z",
+  "generatedAt": "2026-06-01T18:53:59.303Z",
   "release": {
     "label": "local",
-    "gitCommit": "2219c0dd731d3c496916f8021739d92a6dc66185"
+    "gitCommit": "ac7525ff8e9ce04c6f3e84fa9940ebbb9320345c"
   },
   "totals": {
-    "fixtures": 11,
-    "passed": 11,
+    "fixtures": 13,
+    "passed": 13,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -19,7 +19,7 @@
     },
     "medium": {
       "high": 0,
-      "medium": 5,
+      "medium": 7,
       "low": 0
     },
     "low": {
@@ -176,6 +176,54 @@
         },
         {
           "symbol": "cachetools.lru",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "rust-maxbucket-clamp",
+      "packageName": "example-crate",
+      "fromVersion": "1.0.0",
+      "toVersion": "2.0.0",
+      "observedBucket": "medium",
+      "observedOverall": 79,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 78,
+      "expectedOverallMax": 79,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "example_crate::OldType",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "rust-singlesignal-changelog",
+      "packageName": "example-widget",
+      "fromVersion": "1.0.0",
+      "toVersion": "2.0.0",
+      "observedBucket": "medium",
+      "observedOverall": 60,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 60,
+      "expectedOverallMax": 65,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "Widget::render",
           "expected": true,
           "observed": true,
           "hit": true

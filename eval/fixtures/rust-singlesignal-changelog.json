@@ -1,0 +1,29 @@
+{
+  "id": "rust-singlesignal-changelog",
+  "packageName": "example-widget",
+  "fromVersion": "1.0.0",
+  "toVersion": "2.0.0",
+  "description": "v2.2 / F23c sub-phase 1: changelog flagged a breaking change but cargo-semver-checks is unavailable (semanticDiff=null) — Rust sandbox image isn't built yet. Per TRD §9.5 singleSignalOnly → mid-band score ~60. Bucket lands medium. Pins honest single-signal behavior for Rust pending sub-phase 2.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "rust"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "Widget::render",
+        "changeType": "removed",
+        "description": "Widget::render was removed in 2.0 — use Widget::draw instead.",
+        "sourceUrl": "https://github.com/example/widget/releases/tag/v2.0.0"
+      }
+    ],
+    "semanticDiff": null,
+    "patchedFilePaths": ["Cargo.toml", "src/ui/widget.rs"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 60, "max": 65 },
+    "perSymbolHits": [
+      { "symbol": "Widget::render", "shouldDetect": true }
+    ]
+  }
+}

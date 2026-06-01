@@ -58,6 +58,14 @@ export const OfflineFixtureInputSchema = z.object({
    * matching CalculateConfidenceInput's contract.
    */
   smokePassed: z.boolean().nullable().optional(),
+  /**
+   * v2.2 / F23c — language-aware bucket ceiling (CLAUDE.md §5b v2 r1).
+   * Optional + back-compat: omitted = no clamp (TS/Python/Go all reach
+   * 'high'); supplied = the clamp binds. Fixtures pin the clamp's
+   * behavior at the bench layer so a future scorer refactor can't
+   * silently raise the Rust ceiling.
+   */
+  maxBucket: ConfidenceBucketSchema.optional(),
 })
 export type OfflineFixtureInput = z.infer<typeof OfflineFixtureInputSchema>
 

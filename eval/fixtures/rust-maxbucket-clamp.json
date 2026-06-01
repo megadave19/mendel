@@ -1,0 +1,38 @@
+{
+  "id": "rust-maxbucket-clamp",
+  "packageName": "example-crate",
+  "fromVersion": "1.0.0",
+  "toVersion": "2.0.0",
+  "description": "v2.2 / F23c language-aware ceiling test: both signals agree on the same removed symbol (would be 90/high), but maxBucket='medium' clamps to top of medium band (79). Pins the §5b v2 r1 rule: cargo-semver-checks is public-API-only, so Rust never reaches high bucket even on perfect agreement. First binding test of clampToMaxBucket at the bench layer.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "rust", "max-bucket-clamp"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "example_crate::OldType",
+        "changeType": "removed",
+        "description": "example_crate::OldType was removed in 2.0.",
+        "sourceUrl": "https://github.com/example/crate/releases/tag/v2.0.0"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": ["example_crate::OldType"],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "ast-only"
+    },
+    "patchedFilePaths": ["Cargo.toml", "src/lib.rs"],
+    "verificationPassed": true,
+    "maxBucket": "medium"
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 78, "max": 79 },
+    "perSymbolHits": [
+      { "symbol": "example_crate::OldType", "shouldDetect": true }
+    ]
+  }
+}

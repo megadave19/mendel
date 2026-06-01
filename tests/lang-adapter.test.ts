@@ -113,9 +113,9 @@ describe('typescriptAdapter contract', () => {
 })
 
 describe('registeredAdapters', () => {
-  it("exposes the registered list (v2.2.x ships Go + Python + TS — Rust is F23c)", () => {
+  it("exposes the registered list (v2.2.x ships Rust + Go + Python + TS — full F23 polyglot)", () => {
     const ids = registeredAdapters().map((a) => a.id)
-    expect(ids).toEqual(['go', 'python', 'typescript'])
+    expect(ids).toEqual(['rust', 'go', 'python', 'typescript'])
   })
 
   it("routes a Go repo (go.mod present) to the Go adapter", () => {
@@ -123,5 +123,18 @@ describe('registeredAdapters', () => {
     // honest-falls-back until sub-phase 2 wires apidiff in Docker.
     file('go.mod', 'module example.com/x\n\ngo 1.21\n')
     expect(selectAdapter(repo)?.id).toBe('go')
+  })
+
+  it("routes a Rust crate (Cargo.toml present) to the Rust adapter", () => {
+    // F23c sub-phase 1: detection + Cargo.toml parsing land here;
+    // semanticDiff honest-falls-back until sub-phase 2 wires
+    // cargo-semver-checks in Docker. maxBucket='medium' is unique to
+    // this adapter (public-API-only analyzer per §5b v2 r1).
+    file('Cargo.toml', '[package]\nname = "x"\nversion = "0.1.0"\n')
+    const adapter = selectAdapter(repo)
+    expect(adapter?.id).toBe('rust')
+    // Spot-check the binding clamp ceiling here too so a registry-
+    // ordering bug can't accidentally route through to a wider adapter.
+    expect(adapter?.maxBucket).toBe('medium')
   })
 })

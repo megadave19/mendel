@@ -22,6 +22,7 @@
 import { typescriptAdapter } from './typescript'
 import { pythonAdapter } from './python'
 import { goAdapter } from './go'
+import { rustAdapter } from './rust'
 import type { LanguageAdapter } from './types'
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -36,15 +37,22 @@ import type { LanguageAdapter } from './types'
 // `semanticDiff` is honestly degraded until v2.2.x wires griffe via
 // Docker (per V2_PLAN.md §F23a's incremental rule); detection +
 // stale-deps DO work today against real Python repos.
-// v2.2 / F23b — Go adapter registered AHEAD of TypeScript so a polyglot
-// repo with both go.mod AND package.json routes to Go. Sub-phase 1: the
-// adapter's `semanticDiff` honest-falls-back (apidiff Docker integration
-// is sub-phase 2 per V2_PLAN.md's incremental rule); detection +
-// stale-deps via proxy.golang.org DO work today against real Go repos.
-// Ordering vs Python is arbitrary today (marker files are disjoint —
-// no real-world Go repo has a pyproject.toml at the root).
-// (Future) const RUST_ADAPTER = ... (F23c)
+// v2.2 / F23c — Rust adapter registered AHEAD of TypeScript so a polyglot
+// repo with both Cargo.toml AND package.json routes to Rust (the more-
+// specific-language-wins principle). Sub-phase 1: the adapter's
+// `semanticDiff` honest-falls-back (cargo-semver-checks Docker is
+// sub-phase 2 per V2_PLAN.md's incremental rule); detection +
+// stale-deps via crates.io DO work today against real Rust repos.
+//
+// IMPORTANT — `maxBucket: 'medium'` on this adapter is the FIRST
+// binding test of the language-aware ceiling (F23a closeout). On every
+// other adapter the clamp is a no-op ('high' ceiling); on Rust it
+// caps "both signals agree" cases from high → medium per CLAUDE.md
+// §5b v2 r1 (cargo-semver-checks is public-API-only).
+//
+// Ordering vs Go/Python is arbitrary today (marker files are disjoint).
 const REGISTERED: ReadonlyArray<LanguageAdapter> = [
+  rustAdapter,
   goAdapter,
   pythonAdapter,
   typescriptAdapter,
