@@ -54,8 +54,16 @@ import type { ReferenceIndex, UsageSite } from './ast-parser'
  * is identical to `'dts'`/`'griffe'`. The Go adapter emits this tier
  * when the sandbox image is built; otherwise it honest-falls-back to
  * `'ast-only'` + a clear reason in unanalyzableSymbols.
+ *
+ * v2.2 / F23c sub-phase 2 — `'cargo-semver-checks'` joins for the Rust
+ * adapter. The PUBLIC-API-ONLY scope of this analyzer is NOT encoded
+ * via the tier label (the per-symbol scoring rules are identical to
+ * `'griffe'`/`'apidiff'`); it's encoded via the adapter's
+ * `maxBucket: 'medium'` ceiling. Two distinct honesty mechanisms:
+ * the tier names the analyzer that ran; the ceiling caps the bucket
+ * a public-API-only tool can honestly claim.
  */
-export const AnalysisTierSchema = z.enum(['dts', 'griffe', 'apidiff', 'api-extractor', 'ast-only'])
+export const AnalysisTierSchema = z.enum(['dts', 'griffe', 'apidiff', 'cargo-semver-checks', 'api-extractor', 'ast-only'])
 export type AnalysisTier = z.infer<typeof AnalysisTierSchema>
 
 export const SignatureChangeSchema = z.object({

@@ -63,8 +63,9 @@ export interface ConfidenceData {
   /** Which signal tier produced the analysis (UI shows in tooltip).
    *  v2.2 / F23a — `'griffe'` is the Python adapter's analyzer.
    *  v2.2 / F23b — `'apidiff'` is the Go adapter's analyzer.
-   *  Both peers of `'dts'`; kept in lockstep with AnalysisTierSchema. */
-  tier: 'dts' | 'griffe' | 'apidiff' | 'api-extractor' | 'ast-only' | 'none'
+   *  v2.2 / F23c — `'cargo-semver-checks'` is the Rust adapter's analyzer.
+   *  All peers of `'dts'`; kept in lockstep with AnalysisTierSchema. */
+  tier: 'dts' | 'griffe' | 'apidiff' | 'cargo-semver-checks' | 'api-extractor' | 'ast-only' | 'none'
   /** 0–100 — proportion of OLD version's symbols we could analyze. */
   coveragePercent: number
   /** Per-symbol scores with optional human-readable tag. Sorted alphabetically. */

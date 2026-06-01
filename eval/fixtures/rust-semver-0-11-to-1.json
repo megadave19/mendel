@@ -1,0 +1,50 @@
+{
+  "id": "rust-semver-0-11-to-1",
+  "packageName": "semver",
+  "fromVersion": "0.11.0",
+  "toVersion": "1.0.0",
+  "description": "v2.2 / F23c sub-phase 2: real Rust pair (semver 0.11→1.0). cargo-semver-checks finds 11 removed exports; changelog flags 1. Per-symbol math: 1 bothAgree (90) + 10 semanticOnly (70 each) → 72/medium. Disagreement-rate organically pulls below high WITHOUT the maxBucket clamp — complements rust-maxbucket-clamp. Live wrapper output 2026-06-01.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "rust", "max-bucket-clamp"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "semver::Identifier",
+        "changeType": "removed",
+        "description": "semver::Identifier was removed in the v1 redesign — prerelease/build identifiers are now strings.",
+        "sourceUrl": "https://github.com/dtolnay/semver/blob/1.0.0/CHANGELOG.md"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": [
+        "semver::Identifier",
+        "semver::SemVerError",
+        "semver::ReqParseError",
+        "Version::increment_patch",
+        "Version::increment_minor",
+        "Version::increment_major",
+        "Version::is_prerelease",
+        "VersionReq::any",
+        "VersionReq::parse_compat",
+        "VersionReq::exact",
+        "VersionReq::is_exact"
+      ],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "cargo-semver-checks"
+    },
+    "patchedFilePaths": ["Cargo.toml", "src/lib.rs"],
+    "verificationPassed": true,
+    "maxBucket": "medium"
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 71, "max": 73 },
+    "perSymbolHits": [
+      { "symbol": "semver::Identifier", "shouldDetect": true }
+    ]
+  }
+}

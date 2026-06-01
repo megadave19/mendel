@@ -486,12 +486,13 @@ async function semanticDiff(
       // both honest.
       coveragePercent: 100,
       unanalyzableSymbols: out.unanalyzableSymbols,
-      // 'ast-only' for now — sub-phase 2 will land a tier enum extension
-      // for 'cargo-semver-checks' (mirroring F23a 'griffe' / F23b 'apidiff').
-      // The 'ast-only' value is HONEST: the live output goes through the
-      // same fallback shape until the enum widening commit ships, so we
-      // never claim a stronger tier than the schema declares.
-      analysisTier: 'ast-only',
+      // v2.2 / F23c sub-phase 2 — schema gained `'cargo-semver-checks'`
+      // as a peer of `'dts'`/`'griffe'`/`'apidiff'`. Same lockstep rule
+      // as F23a + F23b: scoring math is identical at the per-symbol
+      // level; the distinct enum value exists so the UI + PR body name
+      // the analyzer that actually ran. The PUBLIC-API-ONLY caveat is
+      // encoded separately via the adapter's maxBucket='medium' ceiling.
+      analysisTier: 'cargo-semver-checks',
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

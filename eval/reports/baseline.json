@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-01T18:53:59.303Z",
+  "generatedAt": "2026-06-01T22:57:09.104Z",
   "release": {
     "label": "local",
-    "gitCommit": "ac7525ff8e9ce04c6f3e84fa9940ebbb9320345c"
+    "gitCommit": "b0e2ef4cddffc985d8d1424a9d07123a3a33b031"
   },
   "totals": {
-    "fixtures": 13,
-    "passed": 13,
+    "fixtures": 14,
+    "passed": 14,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -19,7 +19,7 @@
     },
     "medium": {
       "high": 0,
-      "medium": 7,
+      "medium": 8,
       "low": 0
     },
     "low": {
@@ -56,7 +56,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 8,
+      "durationMs": 7,
       "failures": []
     },
     {
@@ -182,7 +182,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 0,
+      "durationMs": 1,
       "failures": []
     },
     {
@@ -200,6 +200,30 @@
       "perSymbol": [
         {
           "symbol": "example_crate::OldType",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "rust-semver-0-11-to-1",
+      "packageName": "semver",
+      "fromVersion": "0.11.0",
+      "toVersion": "1.0.0",
+      "observedBucket": "medium",
+      "observedOverall": 72,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 71,
+      "expectedOverallMax": 73,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "semver::Identifier",
           "expected": true,
           "observed": true,
           "hit": true

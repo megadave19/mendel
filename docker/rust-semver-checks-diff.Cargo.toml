@@ -1,0 +1,16 @@
+[package]
+name = "semver-checks-diff"
+version = "0.1.0"
+edition = "2021"
+# Mendel's cargo-semver-checks wrapper. Built once at image-build time.
+
+[[bin]]
+name = "semver-checks-diff"
+path = "src/main.rs"
+
+[dependencies]
+# Intentionally zero runtime deps — the wrapper does string + filesystem
+# work and shells out to cargo + cargo-semver-checks. Keeping the
+# dependency tree empty means the image-build phase compiles fast and
+# nothing in this binary can drift behavior across cargo-semver-checks
+# upgrades.
