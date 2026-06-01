@@ -116,6 +116,25 @@ export function IssueCard({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>
           {issue.currentVersion} <span style={{ color: 'var(--text-muted)' }}>→</span> {issue.latestVersion}
         </span>
+        {/* v2.1 / F21 — package chip. Rendered only when packageName is set
+            (monorepo scans with > 1 member). Single-package scans don't
+            render the chip — preserves the v1.5 visual on plain repos. */}
+        {issue.packageName && (
+          <span
+            data-pkg-chip
+            title={issue.packageDir ? `member package: ${issue.packageName} (${issue.packageDir})` : undefined}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+              letterSpacing: '0.1em', textTransform: 'lowercase',
+              color: 'var(--accent-secondary)',
+              border: '1px solid var(--accent-secondary)',
+              padding: '0.15rem 0.4rem',
+              opacity: 0.85,
+            }}
+          >
+            pkg: {issue.packageName}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.625rem', flexShrink: 0 }}>
           {/* Fix #15 (audit-2 fix-2): share link lives INSIDE the header row, before
               the badge, so it never overlaps PR-Opened / Confidence-Medium. */}

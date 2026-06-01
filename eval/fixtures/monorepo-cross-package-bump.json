@@ -1,0 +1,39 @@
+{
+  "id": "monorepo-cross-package-bump",
+  "packageName": "@scope/ui",
+  "fromVersion": "3.0.0",
+  "toVersion": "4.0.0",
+  "description": "v2.1 / F21 case: a member package upgrade inside a monorepo. The dep got both signals (changelog + semantic-diff at dts 100% coverage) flagging the same removed export. The runner is expected to score this exactly like the equivalent single-package case — F21's per-package loop is a CALL-SITE refactor and must NOT shift calibration. If this fixture's score ever drifts from the both-agree mid-point (90 → high), either the per-package loop is leaking context or the scorer regressed.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.1", "monorepo"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "Drawer",
+        "changeType": "removed",
+        "description": "Drawer was removed from @scope/ui v4 — use Sheet instead.",
+        "sourceUrl": "https://example.com/changelog#drawer-removed"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": ["Drawer"],
+      "signatureChanges": [],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [
+        { "symbol": "Drawer", "files": ["packages/ui/src/Drawer.tsx"] }
+      ],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["packages/ui/package.json", "packages/ui/src/Drawer.tsx"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "high",
+    "overall": { "min": 89, "max": 91 },
+    "perSymbolHits": [
+      { "symbol": "Drawer", "shouldDetect": true }
+    ]
+  }
+}

@@ -33,7 +33,43 @@ model Scan {
   /// Read by /scan/[id] to know whether to render the 5th StageLane.
   /// Default false → v1.5 scans render the 4-lane view unchanged.
   smokeRequested Boolean @default(false)
+  /// v2.1 / F21 — the workspace flavor detected by lib/agent/workspace/detect.ts:
+  /// 'single' | 'pnpm' | 'npm' | 'yarn' | 'lerna' | 'nx' | 'turbo'. Null on
+  /// legacy v1.5 scans (back-compat). Drives UI (monorepo line on S3, package
+  /// chips on IssueCard, mini-stats on S4).
+  workspaceKind String?
   issues        Issue[]
+  packages      ScanPackage[]
+}
+
+/// v2.1 / F21 — one row per member package enumerated by detectWorkspace().
+/// For a single-package scan there's still one row with dir='.', so the
+/// runtime never branches on "is this a monorepo?" — single is the N=1
+/// special case (V2_PLAN.md §F21 integration rule).
+model ScanPackage {
+  id           String   @id @default(cuid())
+  scanId       String
+  scan         Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  /// From the member package's own package.json `name`. Falls back to dir.
+  name         String
+  /// Path RELATIVE to the workspace root, e.g. 'packages/ui' or '.' for root.
+  dir          String
+  /// Path to that package's package.json, relative to the workspace root.
+  manifestPath String
+  /// Count of dependencies declared by THIS package (best-effort, summed
+  /// across deps/devDeps/peerDeps). Used to rank packages under budget.
+  depsCount    Int      @default(0)
+  /// Count of issues opened for THIS package in this scan. Filled in by
+  /// the runner as it iterates so the dashboard can show per-package stats.
+  issuesFound  Int      @default(0)
+  /// True iff the runner SCANNED this package; false iff it skipped under
+  /// token budget (we still persist the row so "Not Analyzed" can name it).
+  scanned      Boolean  @default(true)
+  /// Reason a package was skipped (budget, error, etc.) — §5b honest.
+  skipReason   String?
+  createdAt    DateTime @default(now())
+
+  @@index([scanId])
 }
 
 model Issue {
@@ -54,6 +90,10 @@ model Issue {
   /// TRD §6.4). Nullable because v1.0 scans + scans with skipped signal
   /// won't have it. Used downstream by confidence scoring (Workstream #2).
   semanticDiff String?
+  /// v2.1 / F21 — workspace-relative dir of the package this issue belongs
+  /// to (e.g. 'packages/ui' or '.'). Null on legacy v1.5 issues. Drives the
+  /// per-package chip on IssueCard and the dep-graph clustering.
+  packageDir   String?
 }
 
 // (Fix #14) AgentLog removed — model was defined but never written by the runner.

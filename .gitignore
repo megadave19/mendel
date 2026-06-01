@@ -16,8 +16,12 @@ dist/
 .env.test.local
 .env.production.local
 
-# Local runtime data — user repo clones and sandbox state
-workspace/
+# Local runtime data — user repo clones and sandbox state.
+# Anchor the ignore to the project root so it doesn't also swallow
+# `lib/agent/workspace/` (the F21 detection module). Without the leading
+# slash, every path component named `workspace` is ignored — that's the
+# bug that hid lib/agent/workspace/detect.ts until 2026-06-01.
+/workspace/
 logs/
 
 # pnpm content-addressable store (created by sandbox runs inside fixtures)

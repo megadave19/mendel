@@ -95,8 +95,15 @@ export function persistIssueData(args: {
    * older callers; semantics are now "the relevant failure output."
    */
   phaseAOutput?: string
+  /**
+   * v2.1 / F21 — workspace-relative dir of the member package this issue
+   * belongs to (e.g. 'packages/ui' or '.'). Persisted to Issue.packageDir
+   * so the UI can render per-package chips and the dep graph can cluster
+   * by package. Omit for v1.5-shape callers (back-compat).
+   */
+  packageDir?: string
 }) {
-  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput } = args
+  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir } = args
 
   // Evidence: prefer changelog citations; if none, fall back to npm link.
   // Once Workstream #2 (confidence scoring) lands, semantic-diff symbols can
@@ -149,6 +156,9 @@ export function persistIssueData(args: {
     prUrl: prUrl ?? null,
     status: prUrl ? 'pr-opened' : 'diagnosed',
     semanticDiff: semanticDiff ? JSON.stringify(semanticDiff) : null,
+    // v2.1 / F21 — single-package callers omit this; back-compat preserved
+    // by Prisma defaulting `Issue.packageDir` to null.
+    packageDir: packageDir ?? null,
   }
 }
 
@@ -229,5 +239,9 @@ export function dbIssueToVM(issue: Issue): IssueVM {
     verificationPassed: v.passed,
     prUrl: issue.prUrl ?? undefined,
     confidenceData,
+    // v2.1 / F21 — surface packageDir if persisted. packageName is filled in
+    // by the API layer (it joins ScanPackage to look up the name); we don't
+    // store the name on Issue to avoid drift if a package gets renamed.
+    packageDir: (issue as Issue & { packageDir?: string | null }).packageDir ?? undefined,
   }
 }

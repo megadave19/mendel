@@ -376,6 +376,42 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
             </div>
           </div>
 
+          {/* v2.1 / F21 — workspace mini-stats. Only renders for monorepo scans;
+              single-package leaves this block out so the v1.5 layout is
+              unchanged. Honest about unscanned packages (budget skips). */}
+          {scan.workspaceKind && scan.packages.length > 0 && (
+            <>
+              <Divider />
+              <div>
+                <SectionLabel>Workspace · {scan.workspaceKind}</SectionLabel>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem', marginTop: '0.625rem' }}>
+                  <MiniStat
+                    label="Packages"
+                    value={scan.packages.length}
+                    accent="var(--accent-secondary)"
+                  />
+                  <MiniStat
+                    label="With issues"
+                    value={scan.packages.filter((p) => p.issuesFound > 0).length}
+                    accent="var(--accent-warning)"
+                  />
+                </div>
+                {scan.packages.some((p) => !p.scanned) && (
+                  <p
+                    role="status"
+                    style={{
+                      marginTop: '0.5rem', fontFamily: 'var(--font-mono)',
+                      fontSize: '0.5625rem', color: 'var(--accent-warning)', lineHeight: 1.5,
+                    }}
+                  >
+                    ⚠ not analyzed (budget):{' '}
+                    {scan.packages.filter((p) => !p.scanned).map((p) => p.name).join(', ')}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
           {/* ── Footer: scan id ── */}
           <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px dashed var(--border-subtle)' }}>
             <SectionLabel>Scan ID</SectionLabel>

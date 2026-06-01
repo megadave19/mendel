@@ -103,4 +103,17 @@ export interface IssueVM {
    * v1.0 scans. UI components must accept absence gracefully.
    */
   confidenceData?: ConfidenceData
+  /**
+   * v2.1 / F21 — workspace-relative dir of the package this issue belongs
+   * to (e.g. 'packages/ui'). Undefined for v1.5 single-package issues and
+   * for v2.1 single-package scans where `dir === '.'` — both render with
+   * no package chip.
+   */
+  packageDir?: string
+  /**
+   * v2.1 / F21 — display name of the owning package (from ScanPackage.name).
+   * Set when packageDir is set and the scan has multiple member packages.
+   * UI uses this for the `pkg: …` chip on IssueCard.
+   */
+  packageName?: string
 }

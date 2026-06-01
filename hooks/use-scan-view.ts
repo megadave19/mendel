@@ -80,6 +80,14 @@ function useRealScanView(id: string): MockScanState {
   // that opted in shows the SMOKE lane the moment the page mounts, even
   // before the first Phase C verify event arrives.
   const [smokeRequested, setSmokeRequested] = useState(false)
+  // v2.1 / F21 — per-package rows for the workspace mini-stats + per-issue
+  // chips. Empty on single-package scans (the API returns []), so the UI
+  // suppresses chip rendering for v1.5 behavior.
+  const [packages, setPackages] = useState<Array<{
+    id: string; name: string; dir: string; depsCount: number; issuesFound: number;
+    scanned: boolean; skipReason: string | null
+  }>>([])
+  const [workspaceKind, setWorkspaceKind] = useState<string | null>(null)
 
   // Derive the view model from the streamed entries.
   const derived = useMemo(() => {
@@ -136,9 +144,15 @@ function useRealScanView(id: string): MockScanState {
     let cancelled = false
     fetch(`/api/scans/${id}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { smokeRequested?: boolean } | null) => {
+      .then((data: {
+        smokeRequested?: boolean
+        workspaceKind?: string | null
+        packages?: Array<{ id: string; name: string; dir: string; depsCount: number; issuesFound: number; scanned: boolean; skipReason: string | null }>
+      } | null) => {
         if (cancelled || !data) return
         if (typeof data.smokeRequested === 'boolean') setSmokeRequested(data.smokeRequested)
+        if (typeof data.workspaceKind === 'string' || data.workspaceKind === null) setWorkspaceKind(data.workspaceKind)
+        if (Array.isArray(data.packages)) setPackages(data.packages)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -244,6 +258,8 @@ function useRealScanView(id: string): MockScanState {
     done,
     replay: () => window.location.reload(),
     smokeRequested,
+    workspaceKind,
+    packages,
   }
 }
 

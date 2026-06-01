@@ -2,7 +2,8 @@ import EventEmitter from 'events'
 import path from 'path'
 import { mkdirSync, rmSync, readFileSync } from 'fs'
 import simpleGit from 'simple-git'
-import { cloneRepo, detectMonorepo, getRepoMeta, assessSubmitCapability, listOpenIssues } from '@/lib/github'
+import { cloneRepo, getRepoMeta, assessSubmitCapability, listOpenIssues } from '@/lib/github'
+import { detectWorkspace, type PackageRef, type WorkspaceDetection } from './workspace/detect'
 import { pickIssueForDep, formatIssueReference } from './issue-link'
 import type { RepoIssue } from '@/lib/github/types'
 import { detectStaleDeps } from './phases/detect'
@@ -201,21 +202,66 @@ export async function runScan(
     const git = simpleGit(repoPath)
     const baseSha = (await git.revparse(['HEAD'])).trim()
 
-    const monorepo = detectMonorepo(repoPath)
-    if (monorepo.isMonorepo) {
-      throw new Error(
-        `Monorepo detected (${monorepo.indicators.join(', ')}) — not supported in v1.0`,
+    // v2.1 / F21 — workspace detection + member-package enumeration. v1.x
+    // rejected monorepos here; v2.1 enumerates them and scans each member.
+    // Single-package = N=1 special case (no branching) per V2_PLAN.md §F21.
+    const workspace: WorkspaceDetection = detectWorkspace(repoPath)
+    if (workspace.kind !== 'single') {
+      log(
+        `Workspace detected (${workspace.kind}) — ${workspace.packages.length} member package(s) [${workspace.indicators.join(', ')}]`,
       )
+      for (const u of workspace.unresolvedPatterns) {
+        log(`(workspace) unresolved pattern "${u.pattern}" — ${u.reason}`)
+      }
     }
+    await db.scan.update({
+      where: { id: scanId },
+      data: { workspaceKind: workspace.kind === 'single' ? null : workspace.kind },
+    })
 
-    // Capture the repo's dependency names for the 3D dep graph (real data, §15 Q3).
+    // Compute per-package depsCount for ranking + the 3D dep graph. The graph
+    // shows the UNION across packages so single-package behavior is unchanged.
+    const allDepNames: string[] = []
+    const packageDepCount = new Map<string, number>()
+    for (const pkg of workspace.packages) {
+      try {
+        const pkgPath = path.join(repoPath, pkg.manifestPath)
+        const raw = readFileSync(pkgPath, 'utf8')
+        const parsed = JSON.parse(raw) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; peerDependencies?: Record<string, string> }
+        const names = [
+          ...Object.keys(parsed.dependencies ?? {}),
+          ...Object.keys(parsed.devDependencies ?? {}),
+          ...Object.keys(parsed.peerDependencies ?? {}),
+        ]
+        packageDepCount.set(pkg.dir, names.length)
+        for (const n of names) if (!allDepNames.includes(n)) allDepNames.push(n)
+      } catch {
+        packageDepCount.set(pkg.dir, 0)
+      }
+    }
     try {
-      const pkgRaw = readFileSync(path.join(repoPath, 'package.json'), 'utf8')
-      const pkg = JSON.parse(pkgRaw) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }
-      const depNames = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})].slice(0, 40)
-      await db.scan.update({ where: { id: scanId }, data: { deps: JSON.stringify(depNames) } })
-    } catch {
-      /* non-fatal — graph falls back to a default node set */
+      await db.scan.update({ where: { id: scanId }, data: { deps: JSON.stringify(allDepNames.slice(0, 40)) } })
+    } catch { /* non-fatal — graph falls back to a default node set */ }
+
+    // Persist ScanPackage rows up-front. issuesFound is updated as the per-dep
+    // loop assigns issues to each package; scanned/skipReason set later if a
+    // package is skipped under budget (§5b — never silently drop).
+    for (const pkg of workspace.packages) {
+      try {
+        await db.scanPackage.create({
+          data: {
+            scanId,
+            name: pkg.name,
+            dir: pkg.dir,
+            manifestPath: pkg.manifestPath,
+            depsCount: packageDepCount.get(pkg.dir) ?? 0,
+            issuesFound: 0,
+            scanned: true,
+          },
+        })
+      } catch (persistErr) {
+        log(`(workspace) failed to persist ScanPackage ${pkg.name}: ${String(persistErr).slice(0, 120)}`)
+      }
     }
 
     // v1.5 W#11 (PRD F17): surface repo characteristics so the user knows
@@ -257,14 +303,38 @@ export async function runScan(
     }
 
     log('Checking dependencies...')
-    const { stale: staleDeps, checked, failed } = await detectStaleDeps(repoPath, log)
 
-    // Honesty (§5b): if NO dep could be checked (every npm lookup failed —
-    // typically rate-limiting after many scans), this is a FAILURE, not a clean
-    // "nothing stale". Surface it as such so the user re-runs instead of
-    // believing the repo is up to date. (Answers "nothing happened, just done?")
-    if (staleDeps.length === 0 && checked === 0 && failed > 0) {
-      const msg = `Couldn't check dependency staleness — all ${failed} npm registry lookups failed (likely rate limit). Re-run in a minute.`
+    // v2.1 / F21 — detect stale deps PER package. For single-package
+    // (workspace.packages.length === 1, dir === '.') this is identical to
+    // v1.5 behavior — one call against the root. For monorepos, each member
+    // package gets its own staleness check; results are merged into a single
+    // queue tagged with the originating package.
+    type StalePackageDep = { pkg: PackageRef; dep: Awaited<ReturnType<typeof detectStaleDeps>>['stale'][number] }
+    const stalePackageDeps: StalePackageDep[] = []
+    let totalChecked = 0
+    let totalFailed = 0
+    // Rank packages: most-stale first (depsCount as a cheap proxy for
+    // staleness probability — actual stale count fills in after the loop).
+    const rankedPackages = [...workspace.packages].sort(
+      (a, b) => (packageDepCount.get(b.dir) ?? 0) - (packageDepCount.get(a.dir) ?? 0),
+    )
+    for (const pkg of rankedPackages) {
+      const pkgRoot = path.join(repoPath, pkg.dir)
+      const prefix = pkg.dir === '.' ? '' : `[${pkg.name}] `
+      const { stale, checked, failed } = await detectStaleDeps(
+        pkgRoot,
+        (msg) => log(`${prefix}${msg}`),
+      )
+      totalChecked += checked
+      totalFailed += failed
+      for (const dep of stale) stalePackageDeps.push({ pkg, dep })
+    }
+
+    // Honesty (§5b): if NO dep could be checked across ALL packages (every
+    // npm lookup failed — typically rate-limiting after many scans), this
+    // is a FAILURE, not a clean "nothing stale".
+    if (stalePackageDeps.length === 0 && totalChecked === 0 && totalFailed > 0) {
+      const msg = `Couldn't check dependency staleness — all ${totalFailed} npm registry lookups failed (likely rate limit). Re-run in a minute.`
       log(`⚠ ${msg}`)
       emit({ type: 'error', message: msg })
       await db.scan
@@ -273,17 +343,24 @@ export async function runScan(
       return
     }
 
+    // Legacy aliases the existing code below still expects. `staleDeps` is
+    // the FLAT list of deps without package context (used to count); the
+    // outer loop below uses `stalePackageDeps` so each dep carries its
+    // package. `failed`/`checked` keep their v1.5 meanings (scan-totals).
+    const staleDeps = stalePackageDeps.map((s) => s.dep)
+    const failed = totalFailed
+
     if (staleDeps.length === 0) {
       log(
         failed > 0
-          ? `No stale deps among the ${checked} checked — but ${failed} couldn't be checked, so this is incomplete; re-run shortly.`
+          ? `No stale deps among the ${totalChecked} checked — but ${failed} couldn't be checked, so this is incomplete; re-run shortly.`
           : 'No significantly stale dependencies found.',
       )
       await db.scan.update({
         where: { id: scanId },
         data: { status: 'completed', completedAt: new Date() },
       })
-      emit({ type: 'done', summary: failed > 0 ? `No stale deps among ${checked} checked (${failed} unchecked).` : 'No stale dependencies detected.' })
+      emit({ type: 'done', summary: failed > 0 ? `No stale deps among ${totalChecked} checked (${failed} unchecked).` : 'No stale dependencies detected.' })
       return
     }
 
@@ -331,10 +408,26 @@ export async function runScan(
     let prsOpened = 0
     const tokenEstimate = { used: 0 }
 
-    for (const dep of staleDeps.slice(0, MAX_DEPS)) {
+    // v2.1 / F21 — track which packages contributed which issues so we can
+    // update ScanPackage.issuesFound after the loop, and per-package skip
+    // tallies for budget honesty (§5b — no silent drops).
+    const scannedPackageDirs = new Set<string>()
+    const issuesPerPackageDir = new Map<string, number>()
+    const skippedDepsPerPackageDir = new Map<string, number>()
+
+    for (const { pkg: currentPackage, dep } of stalePackageDeps.slice(0, MAX_DEPS)) {
       throwIfCancelled(scanId)
+      // Workspace-relative root for THIS dep's package. For single-package
+      // (dir === '.') this equals repoPath, so single-package behavior is
+      // exactly v1.5.
+      const pkgRoot = path.join(repoPath, currentPackage.dir)
+      scannedPackageDirs.add(currentPackage.dir)
       if (tokenEstimate.used > TOKEN_CAP) {
         log(`Token cap reached (${TOKEN_CAP}) — stopping`)
+        skippedDepsPerPackageDir.set(
+          currentPackage.dir,
+          (skippedDepsPerPackageDir.get(currentPackage.dir) ?? 0) + 1,
+        )
         break
       }
 
@@ -371,7 +464,9 @@ export async function runScan(
       // in semantic-diff.
       let refIndexForSignal: ReturnType<typeof buildReferenceIndex> | undefined
       try {
-        refIndexForSignal = buildReferenceIndex(repoPath)
+        // v2.1 / F21 — scope the AST index to THIS package, not the
+        // workspace root. For single-package this is identical to v1.5.
+        refIndexForSignal = buildReferenceIndex(pkgRoot)
       } catch (err) {
         log(`refIndex build failed (${String(err).slice(0, 80)}) — semantic-diff will report empty affectedSitesInRepo`)
       }
@@ -424,7 +519,11 @@ export async function runScan(
       // Diagnosis-suggested files fill remaining budget.
       const rankedFiles: string[] = ['package.json']
       try {
-        const refIndex = buildReferenceIndex(repoPath)
+        // v2.1 / F21 — AST index scoped to THIS package's dir, so only the
+        // member's own source files are ranked + patched. Cross-package
+        // shared usage (the workspace's own internal links) is out of scope
+        // for v2.1.0 — we patch each package's local sources independently.
+        const refIndex = buildReferenceIndex(pkgRoot)
         const usageSites = findPackageUsageSites(refIndex, dep.name)
         // Rank files by usage count (most affected sites first).
         const fileImpact = new Map<string, number>()
@@ -455,7 +554,11 @@ export async function runScan(
         }
         // v1.5 W#7: smart dispatcher picks full-file vs search-replace per file
         // size (TRD §7.2), with fall-back to full-file on block-apply failure.
-        const result = await patchFileSmart(repoPath, filePath, dep, breakingChanges, diagnosis, log)
+        // v2.1 / F21 — patches resolve filePath relative to THIS package's
+        // root (so patches land in e.g. packages/ui/src/X.ts, not the
+        // workspace root's src/X.ts). Single-package keeps using repoPath
+        // because dir === '.'.
+        const result = await patchFileSmart(pkgRoot, filePath, dep, breakingChanges, diagnosis, log)
         if (result.patch) patches.push(result.patch)
         // search-replace blocks are ~3× more token-efficient than full-file
         // for files > 150 lines; budget accordingly.
@@ -685,11 +788,51 @@ export async function runScan(
           phaseAOutput = `${phaseBStdout ?? ''}\n${phaseBStderr ?? ''}`.trim()
         }
         await db.issue.create({
-          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput }),
+          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir: currentPackage.dir }),
         })
+        // v2.1 / F21 — bump the in-memory per-package counter; persisted to
+        // ScanPackage.issuesFound after the loop so we make one update per
+        // package instead of one per issue.
+        issuesPerPackageDir.set(
+          currentPackage.dir,
+          (issuesPerPackageDir.get(currentPackage.dir) ?? 0) + 1,
+        )
       } catch (persistErr) {
         log(`Issue persist failed: ${String(persistErr)}`)
       }
+    }
+
+    // v2.1 / F21 — write per-package issue counts + honest skip reasons.
+    // Packages we never even reached (queue truncated by MAX_DEPS) are
+    // marked unscanned with reason='budget' so "Not Analyzed" can name them.
+    for (const pkg of workspace.packages) {
+      const issuesFound = issuesPerPackageDir.get(pkg.dir) ?? 0
+      const skippedDeps = skippedDepsPerPackageDir.get(pkg.dir) ?? 0
+      const wasScanned = scannedPackageDirs.has(pkg.dir)
+      let skipReason: string | null = null
+      if (!wasScanned) {
+        skipReason = 'budget — global MAX_DEPS reached before this package was reached'
+      } else if (skippedDeps > 0) {
+        skipReason = `budget — ${skippedDeps} dep(s) skipped under TOKEN_CAP/MAX_DEPS`
+      }
+      try {
+        await db.scanPackage.updateMany({
+          where: { scanId, dir: pkg.dir },
+          data: { issuesFound, scanned: wasScanned, skipReason },
+        })
+      } catch (persistErr) {
+        log(`(workspace) failed to update ScanPackage ${pkg.name}: ${String(persistErr).slice(0, 120)}`)
+      }
+    }
+    // Surface a workspace-wide "Not Analyzed" line for budget skips so the
+    // dashboard / scan view can render an honest, never-silent message.
+    const unscannedPackageNames = workspace.packages
+      .filter((pkg) => !scannedPackageDirs.has(pkg.dir))
+      .map((pkg) => pkg.name)
+    if (unscannedPackageNames.length > 0) {
+      log(
+        `⚠ packages not analyzed (budget): ${unscannedPackageNames.join(', ')} — re-scan to cover them`,
+      )
     }
 
     // v1.5 W#6: compute calibration summary from all persisted issues for

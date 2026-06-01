@@ -107,6 +107,13 @@ export interface MockScanState {
    * whether StageLane renders the 5th lane. Default false → v1.5 4-lane view.
    */
   smokeRequested: boolean
+  /** v2.1 / F21 — workspace flavor (null for single-package + demo mock). */
+  workspaceKind: string | null
+  /** v2.1 / F21 — per-package rows for the workspace mini-stats; empty for single. */
+  packages: Array<{
+    id: string; name: string; dir: string; depsCount: number; issuesFound: number;
+    scanned: boolean; skipReason: string | null
+  }>
 }
 
 export function useMockScan(autoStart = true): MockScanState {
@@ -193,5 +200,5 @@ export function useMockScan(autoStart = true): MockScanState {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay, smokeRequested: false }
+  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay, smokeRequested: false, workspaceKind: null, packages: [] }
 }

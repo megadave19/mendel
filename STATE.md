@@ -1,8 +1,8 @@
 # STATE.md — Mendel Session State
 
 > Living log. Read at session start. Update after every meaningful session or state change.
-> **Last updated:** 2026-05-31
-> **Current phase:** **v2.0 FULLY CLOSED** — F19 + F20 + SandboxProvider + persist-wire-through + real-container tests + `/dev/eval` calibration dashboard all landed. Bench 7/7 100%/100%. Next: **v2.1 (F21 monorepo + F22 inspector)** per V2_PLAN §F21.
+> **Last updated:** 2026-06-01
+> **Current phase:** **v2.1 IN PROGRESS** — F21 (monorepo) agent-side + UI done; bench bumped to 8 fixtures. Pending: §11b.1 real-fixture test + F22 inspector. Bench 8/8 100%/100%.
 
 ---
 
@@ -109,6 +109,27 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.1 / F21 — Monorepo support: lift the v1.x rejection)**
+v1.0/v1.5 explicitly rejected monorepos (CLAUDE.md §11). F21 lifts that. Single-package = N=1 special case — no branching, no behavior drift on plain repos.
+- **`lib/agent/workspace/detect.ts`** (new) — pure detection:
+  - `parsePnpmWorkspacePackages()` minimal YAML list parser (no new deps — pnpm-workspace.yaml is a fixed shape)
+  - `resolveWorkspaceGlob()` — supports `dirname` + `prefix/*`; honestly flags `**` / `!` / `[…]` as unresolved (NEVER silently expanded)
+  - `detectWorkspace()` returns `{ kind, packages, indicators, resolvedGlobs, unresolvedPatterns }` across pnpm/npm/yarn/lerna/nx/turbo + single-package fallback
+  - **§5b honesty baked in**: unresolved globs surfaced, malformed package.json degrades to single + logs reason, kind decided from INDICATORS (not packages.length) so a workspace that declared zero-matching globs is still labeled honestly
+- **`tests/workspace-detect.test.ts`** — 27 unit cases (parser, glob, end-to-end across all shapes, invariants like deterministic ordering + glob dedup)
+- **Schema:** `Scan.workspaceKind String?`, `Issue.packageDir String?`, new `ScanPackage` child model with cascade delete + `@@index([scanId])`. Applied via `pnpm db:push`.
+- **`lib/agent/runner.ts`** — replaced the `detectMonorepo` rejection with `detectWorkspace`. Persisted per-package `ScanPackage` rows + `workspaceKind`. Replaced single-package `detectStaleDeps(repoPath)` with per-package iteration → unified queue tagged by package. Ranked packages by depsCount. Wrapped per-dep loop with package context so `buildReferenceIndex` + `patchFileSmart` scope to `pkgRoot = path.join(repoPath, pkg.dir)`. Verify stays at workspace root (workspace install resolves all members). Persisted `Issue.packageDir`. Per-package `issuesFound` updated + skip reasons logged honestly (`packages not analyzed (budget): …`).
+- **`lib/agent/issue-vm.ts`** — accepts + persists optional `packageDir`; `dbIssueToVM` surfaces it on the VM
+- **API** (`GET /api/scans/[id]`) — returns `workspaceKind` + `packages: ScanPackage[]` (empty array on single-package scans → v1.5 UI unchanged); per-issue `packageName` joined server-side from the packages table
+- **UI:**
+  - `<IssueCard>` — `pkg: @scope/name` chip in header (cyan, lowercase) when `packageName` is set; NEVER shown on single-package scans
+  - `/scan/[id]` left pane — new "Workspace · <kind>" mini-stats panel (packages count + with-issues count + amber "not analyzed (budget): …" line when applicable). Hidden on single-package
+  - `hooks/use-scan-view.ts` — fetches + threads `workspaceKind` + `packages` to the view
+- **Eval bench** — new fixture `monorepo-cross-package-bump.json` (both signals agree → score 90 → high). Bench 8/8 100%/100%. **Baseline re-seeded**; the per-package loop is a CALL-SITE refactor that must NOT shift calibration — bench would catch the drift immediately if it ever did.
+- **`.gitignore` fix** — `workspace/` was too broad and inadvertently hid `lib/agent/workspace/detect.ts`. Anchored to `/workspace/` so it only ignores the runtime-cloned-repos dir at project root.
+- **What's NOT in this commit (yet):** §11b.1 real-fixture test (boot a real monorepo through the Docker sandbox; planned next), workspace detection on the New Scan eligibility preview (deferred to v2.1.1), F22 inspector.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **433 passed** (was 406, +27 from `workspace-detect.test.ts`) / 10 gated. `pnpm eval` ✅ 8/8 vs new baseline.
 
 **2026-05-31 (Settings toggles wired + Phase B output capture — §7.2a dead-control + §11c gap closeout)**
 PM caught two real bugs auditing scan `cmptwjea2…`:

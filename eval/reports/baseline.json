@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-05-31T14:10:34.014Z",
+  "generatedAt": "2026-06-01T09:01:45.301Z",
   "release": {
-    "label": "v2.0-with-F20",
-    "gitCommit": "2ab45de5b02902024c9a6c1534af8d91222999c3"
+    "label": "v2.1-with-monorepo-fixture",
+    "gitCommit": "5ce61a11d610363e25e1bd8cb62b9f5879f2b6ad"
   },
   "totals": {
-    "fixtures": 7,
-    "passed": 7,
+    "fixtures": 8,
+    "passed": 8,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
   },
   "bucketConfusion": {
     "high": {
-      "high": 2,
+      "high": 3,
       "medium": 0,
       "low": 0
     },
@@ -74,6 +74,30 @@
       "perSymbol": [
         {
           "symbol": "oldMethod",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "monorepo-cross-package-bump",
+      "packageName": "@scope/ui",
+      "fromVersion": "3.0.0",
+      "toVersion": "4.0.0",
+      "observedBucket": "high",
+      "observedOverall": 90,
+      "expectedBucket": "high",
+      "expectedOverallMin": 89,
+      "expectedOverallMax": 91,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "Drawer",
           "expected": true,
           "observed": true,
           "hit": true
@@ -158,7 +182,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 0,
+      "durationMs": 1,
       "failures": []
     },
     {
