@@ -39,7 +39,7 @@
       "affectedSitesInRepo": [],
       "coveragePercent": 100,
       "unanalyzableSymbols": [],
-      "analysisTier": "dts"
+      "analysisTier": "griffe"
     },
     "patchedFilePaths": ["pyproject.toml", "src/cache_helper.py"],
     "verificationPassed": true

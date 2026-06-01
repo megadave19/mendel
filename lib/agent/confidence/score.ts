@@ -54,7 +54,10 @@ export const AnalysisCoverageSchema = z.object({
   symbolsAnalyzed: z.number().int().min(0),
   symbolsTotal: z.number().int().min(0),
   percentCovered: z.number().min(0).max(100),
-  analysisTier: z.enum(['dts', 'api-extractor', 'ast-only', 'none']),
+  // v2.2 / F23a — `'griffe'` is honest tier for Python (peer of 'dts').
+  // Kept here in lockstep with AnalysisTierSchema in signals/semantic-diff.ts.
+  // `'none'` is this enum's own extra — fires when no diff ran at all.
+  analysisTier: z.enum(['dts', 'griffe', 'api-extractor', 'ast-only', 'none']),
   notAnalyzed: z.array(z.object({ symbol: z.string(), reason: z.string() })),
 })
 export type AnalysisCoverage = z.infer<typeof AnalysisCoverageSchema>
@@ -252,6 +255,20 @@ export interface CalculateConfidenceInput {
    *     broke the app. CLAUDE.md §5b rule 7 extended.
    */
   smokePassed?: boolean | null
+  /**
+   * v2.2 / F23a — language-aware ceiling per CLAUDE.md §5b v2 rule 1
+   * ("confidence ceilings are language-aware and disclosed"). The adapter
+   * declares its analyzer's maximum reachable bucket; this clamp ensures a
+   * weaker analyzer cannot produce a stronger bucket than its fidelity
+   * justifies. Omitted = no clamp (legacy TS pre-F23 + bench tests).
+   *
+   * Honest examples:
+   *   - rust adapter → 'medium' (cargo-semver-checks is public-API-only)
+   *   - python/typescript/go → 'high' (declaration-walking analyzers)
+   *
+   * Clamp is applied AFTER all other rules including the verify/smoke caps.
+   */
+  maxBucket?: ConfidenceBucket
 }
 
 /**
@@ -260,7 +277,7 @@ export interface CalculateConfidenceInput {
  * Deterministic: same inputs → same output bytes (sorted internal ordering).
  */
 export function calculateConfidence(input: CalculateConfidenceInput): ConfidenceScore {
-  const { breakingChanges, semanticDiff, patchedFilePaths, verificationPassed, smokePassed } = input
+  const { breakingChanges, semanticDiff, patchedFilePaths, verificationPassed, smokePassed, maxBucket } = input
   const semanticAvailable = semanticDiff !== null
 
   // Coverage info: from semantic-diff if present, else zero/none.
@@ -308,8 +325,14 @@ export function calculateConfidence(input: CalculateConfidenceInput): Confidence
   const smokeFailed = smokePassed === false
   const verificationCapped = !verificationPassed && baseScore > VERIFY_FAIL_CAP
   const smokeCapped = smokeFailed && baseScore > VERIFY_FAIL_CAP
-  const overall = (verificationCapped || smokeCapped) ? VERIFY_FAIL_CAP : baseScore
-  const bucket = bucketFromScore(overall)
+  const scoreAfterCaps = (verificationCapped || smokeCapped) ? VERIFY_FAIL_CAP : baseScore
+  const bucketAfterCaps = bucketFromScore(scoreAfterCaps)
+
+  // v2.2 / F23a — language-aware ceiling. The adapter's `maxBucket`
+  // clamps the FINAL bucket; the score is also clamped to the ceiling's
+  // top of band so the UI doesn't show e.g. "85/100 medium" (which would
+  // misrepresent the underlying analyzer fidelity). CLAUDE.md §5b v2 r1.
+  const { bucket, overall } = clampToMaxBucket(bucketAfterCaps, scoreAfterCaps, maxBucket)
 
   return ConfidenceScoreSchema.parse({
     overall,
@@ -320,6 +343,38 @@ export function calculateConfidence(input: CalculateConfidenceInput): Confidence
     verificationCapped,
     smokeCapped,
   })
+}
+
+/**
+ * Apply the adapter's per-language ceiling. Returns the clamped pair
+ * (overall, bucket). When `maxBucket` is undefined (legacy / bench tests
+ * without an adapter), returns the inputs unchanged.
+ *
+ * Rules:
+ *   - maxBucket='high'   → no-op (high is the absolute ceiling already)
+ *   - maxBucket='medium' → 'high' downgrades to 'medium' + score capped
+ *                          at BUCKET_HIGH - 1 (top of medium band)
+ *   - maxBucket='low'    → 'high'/'medium' downgrade to 'low' + score
+ *                          capped at BUCKET_MEDIUM - 1 (top of low band)
+ *
+ * Score clamp is at the top of the destination band (not floor), so a
+ * strong-signal scan whose adapter caps at medium still sees a high
+ * NUMERIC score (e.g. 79) — the bucket is the binding ceiling, the
+ * numeric score reflects within-band strength.
+ */
+function clampToMaxBucket(
+  bucket: ConfidenceBucket,
+  overall: number,
+  maxBucket: ConfidenceBucket | undefined,
+): { bucket: ConfidenceBucket; overall: number } {
+  if (!maxBucket || maxBucket === 'high') return { bucket, overall }
+  if (maxBucket === 'medium' && bucket === 'high') {
+    return { bucket: 'medium', overall: Math.min(overall, BUCKET_HIGH - 1) }
+  }
+  if (maxBucket === 'low' && bucket !== 'low') {
+    return { bucket: 'low', overall: Math.min(overall, BUCKET_MEDIUM - 1) }
+  }
+  return { bucket, overall }
 }
 
 /**

@@ -304,3 +304,87 @@ describe('confidence: bucket boundaries', () => {
     expect(bucketFromScore(0)).toBe('low')
   })
 })
+
+/* ─── v2.2 / F23a — language-aware ceiling (maxBucket clamp) ──────────────── */
+//
+// CLAUDE.md §5b v2 rule 1: a weaker analyzer's confidence is CAPPED at the
+// bucket it can honestly reach. These tests pin the clamp behavior at each
+// boundary so a future scorer refactor can't silently raise the ceiling.
+
+describe('confidence: language-aware maxBucket ceiling (§5b v2 r1)', () => {
+  it("omitted maxBucket → no clamp (legacy + bench tests unchanged)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: semanticDiff(['removedFn'], 92),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+    })
+    expect(result.bucket).toBe('high')
+    expect(result.overall).toBeGreaterThanOrEqual(80)
+  })
+
+  it("maxBucket='high' → no-op (TS, Python, Go adapters)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: semanticDiff(['removedFn'], 92),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      maxBucket: 'high',
+    })
+    expect(result.bucket).toBe('high')
+    // Score unchanged when above bucket floor — 'high' is the absolute top.
+    expect(result.overall).toBeGreaterThanOrEqual(80)
+  })
+
+  it("maxBucket='medium' downgrades a would-be-high bucket + caps score at 79 (rust adapter)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: semanticDiff(['removedFn'], 92),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      maxBucket: 'medium',
+    })
+    expect(result.bucket).toBe('medium')
+    expect(result.overall).toBeLessThanOrEqual(79) // top of medium band
+  })
+
+  it("maxBucket='medium' leaves an already-medium score untouched", () => {
+    // Single-signal: changelog only (no semantic-diff). Lands in medium.
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: null,
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      maxBucket: 'medium',
+    })
+    expect(result.bucket).toBe('medium')
+    expect(result.overall).toBeGreaterThanOrEqual(60)
+    expect(result.overall).toBeLessThan(80)
+  })
+
+  it("maxBucket='low' forces low + caps score at 59", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: semanticDiff(['removedFn'], 92),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: true,
+      maxBucket: 'low',
+    })
+    expect(result.bucket).toBe('low')
+    expect(result.overall).toBeLessThanOrEqual(59)
+  })
+
+  it("verification-cap is applied BEFORE the bucket clamp (both compose honestly)", () => {
+    const result = calculateConfidence({
+      breakingChanges: [changelog('removedFn')],
+      semanticDiff: semanticDiff(['removedFn'], 92),
+      patchedFilePaths: ['src/a.ts'],
+      verificationPassed: false, // would cap at 50 (low) by itself
+      maxBucket: 'medium',
+    })
+    // verify cap = 50, then clamp(medium) is a no-op (already in low band).
+    expect(result.bucket).toBe('low')
+    expect(result.overall).toBe(50)
+    expect(result.verificationCapped).toBe(true)
+  })
+})

@@ -102,8 +102,15 @@ export function persistIssueData(args: {
    * by package. Omit for v1.5-shape callers (back-compat).
    */
   packageDir?: string
+  /**
+   * v2.2 / F23a — language id of the adapter that analyzed this issue
+   * (e.g. 'typescript', 'python'). Persisted to Issue.language so the UI
+   * can render LangBadge and the bench summary can split by language.
+   * Omit for v1.5-shape callers (back-compat → null at Prisma layer).
+   */
+  language?: string
 }) {
-  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir } = args
+  const { scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir, language } = args
 
   // Evidence: prefer changelog citations; if none, fall back to npm link.
   // Once Workstream #2 (confidence scoring) lands, semantic-diff symbols can
@@ -159,6 +166,9 @@ export function persistIssueData(args: {
     // v2.1 / F21 — single-package callers omit this; back-compat preserved
     // by Prisma defaulting `Issue.packageDir` to null.
     packageDir: packageDir ?? null,
+    // v2.2 / F23a — pre-F23 callers (pre-adapter) omit this; back-compat
+    // preserved by Prisma defaulting `Issue.language` to null.
+    language: language ?? null,
   }
 }
 

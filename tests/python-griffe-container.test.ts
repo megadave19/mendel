@@ -88,7 +88,8 @@ describe.skipIf(!ENABLE)('Python griffe-diff — real container (§11b.1)', () =
   it("the Python adapter wraps griffe output into a valid SemanticDiff (round-trip)", async () => {
     const diff = await pythonAdapter.semanticDiff(PKG, FROM, TO)
     expect(diff.coveragePercent).toBe(100) // griffe is exhaustive within its scope
-    expect(diff.analysisTier).toBe('dts')
+    // v2.2 / F23a — adapter reports the honest analyzer name, not a proxy.
+    expect(diff.analysisTier).toBe('griffe')
     expect(Array.isArray(diff.removedExports)).toBe(true)
     expect(Array.isArray(diff.signatureChanges)).toBe(true)
     // The "fallback" path produces a single unanalyzable entry — on the

@@ -181,24 +181,36 @@ describe('pythonAdapter.detect', () => {
 // ── pythonAdapter.semanticDiff — falls back honestly when image missing ───────
 
 describe('pythonAdapter.semanticDiff — honest fallback', () => {
-  it("returns analyzable-but-empty diff naming the missing image (NEVER fabricates)", async () => {
-    // The Python sandbox image is built by `preflightPythonSandbox` the
-    // first time a Python scan runs. In the unit-test environment the
-    // image is NOT built, so semanticDiff hits the honest-fallback path.
-    // §11b.1 real-container test in tests/python-griffe-container.test.ts
-    // covers the happy path against actual Docker.
-    const diff = await pythonAdapter.semanticDiff('requests', '2.31.0', '3.0.0')
+  it("returns analyzable-but-empty diff naming the gap (NEVER fabricates)", async () => {
+    // F23a moved the success-path assertion into the §11b.1 real-container
+    // test (tests/python-griffe-container.test.ts). This unit test still
+    // exercises the honest-fallback shape, but it does so via an
+    // INTENTIONALLY-UNRESOLVABLE version so the test is deterministic
+    // whether or not the Python sandbox image is built on the dev box.
+    //
+    // Why this version: `0.0.0-mendel-test-nonexistent-please-fail` is
+    // a valid PEP 440 string but pip will fail with "Could not find a
+    // version that satisfies the requirement". That hits the
+    // `runGriffeDiff` error path → buildSemanticDiffFallback → the
+    // expected shape, in ~5s on cold docker. If Docker isn't installed
+    // at all, pythonImageExists returns false → "not built" path. Both
+    // branches satisfy the assertion below.
+    const diff = await pythonAdapter.semanticDiff(
+      'requests',
+      '2.31.0',
+      '0.0.0-mendel-test-nonexistent-please-fail',
+    )
     expect(diff.removedExports).toEqual([])
     expect(diff.signatureChanges).toEqual([])
     expect(diff.newDeprecations).toEqual([])
     expect(diff.coveragePercent).toBe(0)
     expect(diff.analysisTier).toBe('ast-only')
     expect(diff.unanalyzableSymbols).toHaveLength(1)
-    // Reason names either "image is not built" (unit-test env) OR
-    // "griffe could not analyze …" (image exists but griffe failed on
-    // this pair). Both are honest.
+    // Reason names either "image is not built" (Docker absent) OR
+    // "griffe could not analyze …" (image exists but pip/griffe failed
+    // on this pair). Both are honest.
     expect(diff.unanalyzableSymbols[0].reason).toMatch(/(not built|griffe could not analyze)/i)
-  })
+  }, 60_000) // Docker pip-install round-trip = up to ~30s on cold cache
 })
 
 // ── Adapter contract pins ─────────────────────────────────────────────────────

@@ -308,4 +308,22 @@ describe('issue-vm: persist → map round-trip', () => {
     expect(vm.confidence).toBe('medium')
     expect(vm.confidenceData).toBeUndefined()
   })
+
+  /* v2.2 / F23a — Issue.language passthrough. The runner now tags every
+   * persisted issue with its adapter id so the UI's LangBadge + the
+   * bench-summary split-by-language can render honestly. Without this
+   * passthrough Python issues would silently show up as legacy/null. */
+  it("persistIssueData writes adapter language to Issue.language (back-compat: null when omitted)", async () => {
+    const { persistIssueData } = await import('@/lib/agent/issue-vm')
+    const withLang = persistIssueData({
+      scanId: 'scan-1', dep, breakingChanges, diagnosis, patches,
+      verificationPassed: true, language: 'python',
+    })
+    expect((withLang as { language: string | null }).language).toBe('python')
+    const withoutLang = persistIssueData({
+      scanId: 'scan-1', dep, breakingChanges, diagnosis, patches,
+      verificationPassed: true,
+    })
+    expect((withoutLang as { language: string | null }).language).toBeNull()
+  })
 })

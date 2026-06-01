@@ -7,9 +7,14 @@ import { detectWorkspace, type PackageRef, type WorkspaceDetection } from './wor
 import { selectAdapter } from './lang/registry'
 import { pickIssueForDep, formatIssueReference } from './issue-link'
 import type { RepoIssue } from '@/lib/github/types'
-import { detectStaleDeps } from './phases/detect'
+// v2.2 / F23a — `detectStaleDeps` is routed via `adapter.detectStaleDeps`
+// (TS = pure delegation; Python = PyPI walker). The value import is gone;
+// the type-only re-import below remains for the StalePackageDep alias.
+import type { detectStaleDeps } from './phases/detect'
 import { parseBreakingChanges } from './signals/changelog'
-import { parseSemanticDiff, type SemanticDiff } from './signals/semantic-diff'
+// v2.2 / F23a — `parseSemanticDiff` is now routed via `adapter.semanticDiff`
+// (TS = pure delegation; Python = griffe-in-Docker). Type import stays.
+import type { SemanticDiff } from './signals/semantic-diff'
 import { calculateConfidence } from './confidence/score'
 import { chooseSubmissionMode, explainSubmissionMode } from './confidence/threshold'
 import { summarizeScanConfidence } from './confidence/summary'
@@ -232,6 +237,26 @@ export async function runScan(
     }
     log(`Language: ${adapter.displayName} (max bucket: ${adapter.maxBucket})`)
 
+    // v2.2 / F23a — adapter pre-flight (Python builds its sandbox image
+    // here so a Docker-down failure surfaces ONCE, at the top of the scan,
+    // instead of as an opaque "semantic-diff failed" deep in the per-dep
+    // loop. Idempotent for every adapter; TS adapter has no preflight.
+    if (adapter.preflight) {
+      try {
+        log(`Pre-flight: building ${adapter.sandboxImage} if needed (one-time, ~60s on first run)...`)
+        await adapter.preflight()
+        log(`Pre-flight OK`)
+      } catch (err) {
+        const msg = `Adapter pre-flight failed: ${err instanceof Error ? err.message : String(err)}`
+        log(`⚠ ${msg}`)
+        emit({ type: 'error', message: msg })
+        await db.scan
+          .update({ where: { id: scanId }, data: { status: 'failed', errorMessage: msg, completedAt: new Date() } })
+          .catch(() => {})
+        return
+      }
+    }
+
     await db.scan.update({
       where: { id: scanId },
       data: {
@@ -342,7 +367,10 @@ export async function runScan(
     for (const pkg of rankedPackages) {
       const pkgRoot = path.join(repoPath, pkg.dir)
       const prefix = pkg.dir === '.' ? '' : `[${pkg.name}] `
-      const { stale, checked, failed } = await detectStaleDeps(
+      // v2.2 / F23a — route through the adapter. TS = pure delegation
+      // (byte-identical to pre-F23 behavior); Python uses PyPI + griffe;
+      // Go/Rust will plug in here without any runner-side change.
+      const { stale, checked, failed } = await adapter.detectStaleDeps(
         pkgRoot,
         (msg) => log(`${prefix}${msg}`),
       )
@@ -493,12 +521,17 @@ export async function runScan(
       }
 
       log(`Fetching changelog + semantic-diff for ${dep.name}...`)
+      // v2.2 / F23a — semantic-diff routed through the adapter so Python
+      // hits griffe-in-Docker, TS hits parseSemanticDiff (delegation).
+      // Changelog adapter override is optional; the default GitHub
+      // release-notes walker is already language-agnostic.
+      const parseBreakingChangesFn = adapter.parseBreakingChanges ?? parseBreakingChanges
       const [breakingChanges, semanticDiff] = await Promise.all([
-        parseBreakingChanges(dep.name, dep.currentVersion, dep.latestVersion, pat).catch((err) => {
+        parseBreakingChangesFn(dep.name, dep.currentVersion, dep.latestVersion, pat).catch((err) => {
           log(`changelog signal failed: ${String(err).slice(0, 120)}`)
           return [] as Awaited<ReturnType<typeof parseBreakingChanges>>
         }),
-        parseSemanticDiff(dep.name, dep.currentVersion, dep.latestVersion, { refIndex: refIndexForSignal })
+        adapter.semanticDiff(dep.name, dep.currentVersion, dep.latestVersion, { refIndex: refIndexForSignal })
           .then((d: SemanticDiff): SemanticDiff | null => d)
           .catch((err: unknown): SemanticDiff | null => {
             log(`semantic-diff signal failed: ${String(err).slice(0, 120)}`)
@@ -719,6 +752,10 @@ export async function runScan(
         patchedFilePaths: patches.map((p) => p.filePath),
         verificationPassed,
         smokePassed,
+        // v2.2 / F23a — language-aware ceiling (CLAUDE.md §5b v2 r1). The
+        // scorer clamps both bucket + numeric score to the adapter's
+        // declared max. No-op for TS (maxBucket='high'); binding for rust.
+        maxBucket: adapter.maxBucket,
       })
       // v2.0 / F20 — surface both possible caps. Either alone or together is
       // honest; calculateConfidence already enforces the cap math.
@@ -809,7 +846,7 @@ export async function runScan(
           phaseAOutput = `${phaseBStdout ?? ''}\n${phaseBStderr ?? ''}`.trim()
         }
         await db.issue.create({
-          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir: currentPackage.dir }),
+          data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir: currentPackage.dir, language: adapter.id }),
         })
         // v2.1 / F21 — bump the in-memory per-package counter; persisted to
         // ScanPackage.issuesFound after the loop so we make one update per

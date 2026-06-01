@@ -433,13 +433,11 @@ async function semanticDiff(
       // verification not run, etc.).
       coveragePercent: 100,
       unanalyzableSymbols: out.unanalyzableSymbols,
-      // The shared SemanticDiff schema constrains analysisTier to
-      // `'dts' | 'api-extractor' | 'ast-only'`. v2.2.x intentionally
-      // reuses the strongest existing tier label (`dts`) for griffe
-      // until the schema is extended with `'griffe'` — adding an enum
-      // member requires touching the bench fixtures + UI legends, so
-      // it's tracked as the next polish step (V2_PLAN.md §F23a sub-gate).
-      analysisTier: 'dts',
+      // v2.2 / F23a — the schema now carries `'griffe'` as a peer of
+      // `'dts'` so the UI + PR body name the actual analyzer that ran.
+      // Scoring math treats them identically (both are declaration-
+      // walking, exhaustive within scope); the value exists for honesty.
+      analysisTier: 'griffe',
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -478,4 +476,7 @@ export const pythonAdapter: LanguageAdapter = {
   detect,
   detectStaleDeps,
   semanticDiff,
+  // v2.2 / F23a — pre-flight builds the Python sandbox image once per
+  // scan if it's missing. Idempotent (pythonImageExists short-circuits).
+  preflight: preflightPythonSandbox,
 }

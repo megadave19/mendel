@@ -36,7 +36,19 @@ import type { ReferenceIndex, UsageSite } from './ast-parser'
 
 /* ─── Output schema — TRD §6.4 verbatim ───────────────────────────────────── */
 
-export const AnalysisTierSchema = z.enum(['dts', 'api-extractor', 'ast-only'])
+/**
+ * v2.2 / F23a — `'griffe'` joins the enum as a peer of `'dts'`. The Python
+ * adapter pulls both versions of a package, walks the public + private
+ * surface with griffe's `find_breaking_changes`, and reports that as
+ * tier `'griffe'`. Scoring math is identical to `'dts'` (both are
+ * declaration-walking analyzers with exhaustive coverage of what they
+ * see) — the distinct enum value exists for HONESTY: the UI + PR body
+ * tells the reviewer WHICH analyzer ran, instead of laundering Python
+ * findings through a TypeScript label. (Pre-F23a the adapter shipped
+ * `'dts'` as a proxy; the V2_PLAN.md §F23a sub-gate item flagged
+ * extending the enum here as the right fix.)
+ */
+export const AnalysisTierSchema = z.enum(['dts', 'griffe', 'api-extractor', 'ast-only'])
 export type AnalysisTier = z.infer<typeof AnalysisTierSchema>
 
 export const SignatureChangeSchema = z.object({

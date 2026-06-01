@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23 core + F23a complete (Python: detection + PyPI + griffe semantic-diff via Docker + §11b.1 + bench fixture). Next: F23a sub-gate (end-to-end Python scan on a real public repo) → **F23b Go**.
+> **Current phase:** **v2.2 IN PROGRESS** — F23a **engineering complete**: schema extended with honest `'griffe'` tier, runner fully routed via `LanguageAdapter` (`preflight()` + `detectStaleDeps` + `semanticDiff`), `Issue.language` populated, **language-aware `maxBucket` clamp** in scorer per §5b v2 r1. Next: end-to-end Python scan on a real public repo for the §F23 sub-gate Loom → **F23b Go**.
 
 ---
 
@@ -109,6 +109,30 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23a — sub-gate engineering closeout: honest `'griffe'` tier, runner fully routed via adapter, language-aware ceiling)**
+Closes the four items V2_PLAN.md §F23a flagged as "deferred to sub-gate" once griffe was shelling cleanly. After this commit a Python scan calls *only* through the `LanguageAdapter` interface — the runner has zero direct imports of TS-specific or Python-specific pipeline functions. Same byte-identical behavior on TS (eval bench unchanged at 9/9 100%/100%), now polyglot-correct.
+- **`lib/agent/signals/semantic-diff.ts`** — `AnalysisTierSchema` gains `'griffe'` as a peer of `'dts'`. Scoring math treats them identically (both are declaration-walking, exhaustive within scope); the distinct enum value exists so the UI + PR body name the analyzer that actually ran instead of laundering Python findings through a TypeScript label. CLAUDE.md §5b. Mirrored in `lib/agent/confidence/score.ts` (`AnalysisCoverageSchema`), `lib/agent/confidence/summary.ts` (`TierCountsSchema` + default object), `components/phase-d/types.ts` (`ConfidenceData.tier`).
+- **`lib/agent/lang/python.ts`** — on the happy path now returns `analysisTier: 'griffe'` (no longer a `'dts'` proxy). Comment block updated; the adapter also exposes `preflight: preflightPythonSandbox` so the runner can build the image once per scan.
+- **`lib/agent/lang/types.ts`** — `LanguageAdapter` gains optional `preflight?(): Promise<void>`. Failure surfaces ONCE at the top of the scan ("Adapter pre-flight failed: …") rather than as opaque mid-loop "semantic-diff failed" errors. Idempotent; TS adapter has none.
+- **`lib/agent/runner.ts`** — major routing pass:
+  - `await adapter.preflight?.()` after adapter selection with full §5b honest failure path
+  - `detectStaleDeps(...)` → `adapter.detectStaleDeps(...)` (TS = pure delegation; Python = PyPI walker; Go/Rust drop-in)
+  - `parseSemanticDiff(...)` → `adapter.semanticDiff(...)` (TS = pure delegation; Python = griffe-in-Docker)
+  - `parseBreakingChanges(...)` → `adapter.parseBreakingChanges?.(...) ?? parseBreakingChanges(...)` (the default GitHub release-notes walker is already language-agnostic; adapters override only when a better source exists)
+  - `calculateConfidence({ …, maxBucket: adapter.maxBucket })` — language-aware ceiling now wired
+  - `persistIssueData({ …, language: adapter.id })` — every persisted issue carries its analyzer's id
+  - Direct value imports of `detectStaleDeps` + `parseSemanticDiff` are gone; the remaining type-only import is just for the `StalePackageDep` alias
+- **`lib/agent/confidence/score.ts`** — new `clampToMaxBucket(bucket, overall, maxBucket)` helper applies the §5b v2 r1 ceiling AFTER all other rules (verify/smoke caps still bind first; ceiling clamps next). Score is capped at the top of the destination band, not floor — within-band strength survives, but the bucket is the honest binding ceiling. TS/Python/Go = `'high'` (no-op); Rust = `'medium'` (binding; cargo-semver-checks is public-API-only).
+- **`lib/agent/issue-vm.ts`** — `persistIssueData` now accepts `language?: string` (back-compat: null when omitted) so the v1.0-shape callers still work and v2.2 callers tag every issue.
+- **`eval/fixtures/python-cachetools-4-to-5.json`** — `analysisTier: 'griffe'` (was `'dts'` proxy). Bench remains 9/9 100%/100% — the tier value is purely informational at the scoring layer; only the enum-shape now matches the live griffe output.
+- **`tests/python-adapter.test.ts`** — fallback test rewritten to use an intentionally-unresolvable version (`0.0.0-mendel-test-nonexistent-please-fail`) so it's deterministic whether or not the Python sandbox image is built on the dev box. Either Docker-down or pip-can't-resolve hits the honest-fallback path; both branches satisfy the assertion. 60s timeout for cold pip.
+- **`tests/python-griffe-container.test.ts`** — round-trip assertion updated: `expect(diff.analysisTier).toBe('griffe')`.
+- **`tests/confidence-summary.test.ts`** — `tierCounts` literal extended with `griffe: 0`.
+- **`tests/confidence-score.test.ts`** — 6 new tests for the `maxBucket` clamp (omitted=no-op; high=no-op; medium downgrades high→medium with score≤79; medium leaves already-medium untouched; low forces low with score≤59; verify-cap composes correctly with the clamp).
+- **`tests/issue-vm.test.ts`** — 1 new test for `language` passthrough.
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **486 passed** / 16 skipped (+7 new) · `pnpm eval` ✅ 9/9 100%/100% **no regression vs. baseline** · `pnpm test:docker` ✅ **11/11** (workspace-install + griffe + iptables + cache-eviction + smoke containers).
+- **F23a sub-gate remaining (owner side, not engineering):** end-to-end Python scan against a real public repo (per V2_PLAN.md §F23 sub-gate) — pick a small public Python repo with a known stale dep, scan, Loom the result, add the case as a v2.2 bench fixture. Engineering is unblocked for **F23b Go** in parallel.
 
 **2026-06-01 (v2.2 / F23a — griffe Docker integration: Python semantic-diff is REAL)**
 Closes the F23a stub gap left by the previous commit. Mendel now runs a real `griffe check`-style API diff for Python packages inside a dedicated Docker sandbox image, returning a normalized `SemanticDiff` that flows through the language-agnostic scorer.

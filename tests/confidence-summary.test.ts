@@ -67,7 +67,7 @@ describe('summarizeScanConfidence', () => {
     expect(result!.issuesCalibrated).toBe(3)
     expect(result!.avgScore).toBe(70) // (90+70+50)/3
     expect(result!.bucketCounts).toEqual({ high: 1, medium: 1, low: 1 })
-    expect(result!.tierCounts).toEqual({ dts: 2, 'api-extractor': 0, 'ast-only': 1, none: 0 })
+    expect(result!.tierCounts).toEqual({ dts: 2, griffe: 0, 'api-extractor': 0, 'ast-only': 1, none: 0 })
   })
 
   it('regression rate counts verification failures across calibrated issues only', () => {

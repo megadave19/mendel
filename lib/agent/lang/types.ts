@@ -116,6 +116,24 @@ export interface LanguageAdapter {
   // ── Optional, per-language hooks (foundation can ship without them) ──
 
   /**
+   * One-time per-scan pre-flight. Called by the runner AFTER adapter
+   * selection and BEFORE the per-dep loop. Used by Python (and future
+   * Go/Rust) adapters to build their sandbox image if it's missing, so
+   * the failure mode "Docker daemon down" surfaces honestly at the top
+   * of the scan instead of as an opaque mid-loop "semantic-diff failed".
+   *
+   * Implementations MUST be idempotent + safe to call when the image
+   * already exists (the Python implementation short-circuits via
+   * `pythonImageExists`). Throws propagate to the runner, which
+   * surfaces them as a clean "scan failed" with the error message.
+   *
+   * Default (omitted): no preflight — TS adapter doesn't need one because
+   * the Node sandbox image is built lazily by the existing v1.0
+   * `ensureSandboxImage` path the runner already invokes.
+   */
+  preflight?(): Promise<void>
+
+  /**
    * Run the changelog signal. Default: the existing GitHub release-notes
    * walker, which is already language-agnostic. Adapters override only
    * when a language has a better-than-GitHub authoritative source.
