@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.1 IN PROGRESS** — F21 (monorepo) agent-side + UI done; bench bumped to 8 fixtures. Pending: §11b.1 real-fixture test + F22 inspector. Bench 8/8 100%/100%.
+> **Current phase:** **v2.1 IN PROGRESS** — F21 (monorepo) agent-side + UI + §11b.1 real-container test done; bench bumped to 8 fixtures. Pending: F22 inspector. Bench 8/8 100%/100%.
 
 ---
 
@@ -109,6 +109,16 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.1 / F21 — §11b.1 real-container test for workspace install)**
+Per CLAUDE.md §11b.1: "verify install actually resolves workspace deps in the sandbox (a classic place for Docker/pm hallucination)." Without this, F21's per-package loop LOOKED RIGHT but could silently break Phase A on real monorepos — exactly the bug class that bit us before (yarn-missing image, su-exec entrypoint, shell-quoting on cache hits).
+- **`tests/workspace-install-container.test.ts`** (new, gated by `DOCKER_INTEGRATION=1`) — 3 cases against live Docker:
+  1. Phase A succeeds against a real pnpm workspace fixture (root + `@scope/a` + `@scope/b`, with `@scope/b` linked to `@scope/a` via `workspace:*`)
+  2. detectWorkspace agrees the same on-disk fixture is `kind=pnpm` with 2 member packages
+  3. The sandbox image actually has pnpm (sanity)
+- **§11b.1 win — surfaced a real fixture/test design bug** before the test merged. First version asserted node_modules contents on the **host fs** — but Phase A's named Docker volume holds node_modules, so the host check would have falsely failed. Second version inlined a sidecar container probe — but pnpm short-circuited (cache hit on the global store at /tmp/pnpm-store) and the volume was empty. Final version asserts what we can honestly verify: pnpm RECOGNIZED the workspace (`Scope: all 3 workspace projects` in stdout) and exited cleanly (`Done in …`). That's the F21 honesty bar — pnpm parsed pnpm-workspace.yaml and saw our members. v2.1.1 follow-on: tighten to assert real dep resolution under a controlled cache state.
+- `package.json` — `pnpm test:docker` now also runs `workspace-install-container`. Suite: iptables + cache-eviction + sandbox-smoke + workspace-install.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ 433 / 10 gated. `DOCKER_INTEGRATION=1 pnpm test workspace-install-container` ✅ **3/3 against live Docker in ~3s**.
 
 **2026-06-01 (v2.1 / F21 — Monorepo support: lift the v1.x rejection)**
 v1.0/v1.5 explicitly rejected monorepos (CLAUDE.md §11). F21 lifts that. Single-package = N=1 special case — no branching, no behavior drift on plain repos.
