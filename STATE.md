@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.1 IN PROGRESS** — F21 (monorepo) agent-side + UI + §11b.1 real-container test done; bench bumped to 8 fixtures. Pending: F22 inspector. Bench 8/8 100%/100%.
+> **Current phase:** **v2.1 FEATURE COMPLETE** — F21 (monorepo) + F22 (Inspect API) done end-to-end. Pending: v2.1 release gate (bench + visual baseline). Bench 8/8 100%/100%.
 
 ---
 
@@ -109,6 +109,21 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.1 / F22 — "Point at any API" Mode)**
+A standalone breaking-change report: paste `package + from + to` → calibrated report → permalink. No repo, no PR, no sandbox. Reuses the existing changelog + semantic-diff signals and the scorer. Per V2_PLAN §F22.
+- **`lib/agent/inspect.ts`** (new, pure) — `inspectApi(input)` orchestrates both signals in parallel, isolates per-signal failures into `errors[]`, applies a **structural cap** that clamps `bucket ≤ medium` (overall ≤ 79). Why the cap: inspect mode has no verification and no repo context — claiming "high" would be a lie. Analogous to v1.0's amber-only rule, recast.
+- **Schema** — new `Inspection` model: `id, packageName, fromVersion, toVersion, report Json, createdAt, tenantId String?`. v3 cloud-readiness seam preserved (nullable `tenantId`). Indexes on `[packageName, fromVersion, toVersion]` + `[createdAt]`.
+- **`POST /api/inspect`** — Zod-validates package name (npm naming rules + 214-char cap) + two versions; refuses identical versions (422-class). Rate-limited 10/min like scans. Persists; returns `{id, report}`. PAT is OPTIONAL — if absent, changelog signal honest-skips (we don't burn the anonymous GitHub rate limit). PAT is NEVER persisted.
+- **`GET /api/inspect/[id]`** — read-only permalink resolver, 404s on unknown ids → triggers the project not-found page.
+- **`/inspect` page** — input row (pkg + from + to + submit), result panel reusing `PanelFrame` + `ConfidenceBadge` + `NotAnalyzedCallout`. Honest banner when no PAT is connected ("changelog signal will be skipped"). Copy-permalink button + "new inspection" reset. Every control is wired (§7.2a).
+- **`/inspect/[id]` permalink page** — fetches by id, renders the same panel. Honest empty/loading/error states.
+- **`InspectionReportPanel`** (new component) — shared between `/inspect` and `/inspect/[id]`. Renders per-symbol findings, evidence citations, and the "no findings ≠ safe" honest empty state.
+- **Nav entry "Inspect API"** added to AppNav (wired, not a dead link — §7.2a).
+- **+11 unit tests** for `inspect.ts` (structural cap truth table, signal orchestration, error propagation, deterministic output for permalink parity).
+- **+2 e2e tests** (`tests/e2e/inspect.spec.ts`, mocked API for determinism): paste pair → report renders + permalink resolves; refuses identical versions.
+- **Live verification against the dev server**: `POST /api/inspect` for `react 17.0.0 → 18.0.0` returned the real R17→18 `$$typeof: number→symbol` migration on `createContext / forwardRef / Fragment / jsx / jsxDEV / jsxs / lazy` with `bucket=medium, overall=70`. Permalink GET returns the same. UI pages both serve 200 with the report rendered.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **444 passed** (was 433, +11) / 10 gated. `pnpm eval` no regression. Playwright `inspect.spec.ts` ✅ 2/2 in 6.3s.
 
 **2026-06-01 (v2.1 / F21 — §11b.1 real-container test for workspace install)**
 Per CLAUDE.md §11b.1: "verify install actually resolves workspace deps in the sandbox (a classic place for Docker/pm hallucination)." Without this, F21's per-package loop LOOKED RIGHT but could silently break Phase A on real monorepos — exactly the bug class that bit us before (yarn-missing image, su-exec entrypoint, shell-quoting on cache hits).

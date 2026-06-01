@@ -10,6 +10,10 @@ import { useMascotEnabled } from '@/hooks/use-user-prefs'
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '◈' },
   { href: '/scan/new', label: 'New Scan', icon: '⟳' },
+  // v2.1 / F22 — "Point at any API" inspector. Wired, not a dead link
+  // (CLAUDE.md §7.2a). Route lives at /inspect with a permalink under
+  // /inspect/[id].
+  { href: '/inspect', label: 'Inspect API', icon: '◇' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ]
 

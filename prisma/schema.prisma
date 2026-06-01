@@ -99,6 +99,28 @@ model Issue {
 // (Fix #14) AgentLog removed — model was defined but never written by the runner.
 // Reintroduce in v1.5 when we wire per-tool logging.
 
+/// v2.1 / F22 — "Point at any API" inspection report. Pure analysis: no
+/// repo, no PR, no sandbox. Each row is a shareable permalinkable report
+/// (/inspect/[id]). `tenantId` is nullable for v2-local cohabitation; v3
+/// cloud will fill it in per the cloud-readiness contract.
+model Inspection {
+  id           String   @id @default(cuid())
+  packageName  String
+  fromVersion  String
+  toVersion    String
+  /// JSON-stringified ApiReport (lib/agent/inspect.ts). SQLite has no
+  /// native JSON column type — see TRD §10 for the precedent on other
+  /// blobs (Issue.diagnosis, Scan.confidenceSummary, etc.).
+  report       String
+  createdAt    DateTime @default(now())
+  /// v2.1 → v3 cloud-readiness seam (V2_PLAN §2.1). Null for local single-
+  /// tenant runs; v3 will populate per scoped tenant on each row.
+  tenantId     String?
+
+  @@index([packageName, fromVersion, toVersion])
+  @@index([createdAt])
+}
+
 // v1.5
 model RejectionPattern {
   id              String   @id @default(cuid())
