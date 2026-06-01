@@ -458,6 +458,63 @@ export async function getLatestPullRequestComment(
   }
 }
 
+// ─── v2.3 / F24 — merge a pull request ────────────────────────────────────────
+
+/**
+ * Honest outcome shape. ok=true → the PR is merged on GitHub (the SHA
+ * is the merge commit); ok=false → the merge call failed AND the PR is
+ * NOT merged. CLAUDE.md §5c: never silently consider a merge "kinda
+ * happened" — every outcome is one or the other.
+ */
+export type MergePullRequestResult =
+  | { ok: true; sha: string }
+  | { ok: false; reason: string; status?: number }
+
+/**
+ * Merge a PR via the GitHub merge API. v2.3 F24 only calls this AFTER
+ * the §5c envelope passes (lib/agent/automerge/policy.ts) AND after the
+ * cancelable dwell window completes. This wrapper is intentionally
+ * thin: input validation + a single API call + honest error mapping.
+ *
+ * Default merge_method='merge' (creates a merge commit) — preserves
+ * the PR history and is the least-surprising choice for an autonomous
+ * agent. Future polish can let RepoSetting override it.
+ */
+export async function mergePullRequest(
+  pat: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  options: { mergeMethod?: 'merge' | 'squash' | 'rebase'; commitTitle?: string; commitMessage?: string } = {},
+): Promise<MergePullRequestResult> {
+  const client = new Octokit({ auth: pat })
+  try {
+    const res = await client.rest.pulls.merge({
+      owner,
+      repo,
+      pull_number: prNumber,
+      merge_method: options.mergeMethod ?? 'merge',
+      commit_title: options.commitTitle,
+      commit_message: options.commitMessage,
+    })
+    // 200 + merged: true + sha is the success contract per GitHub docs.
+    // We treat anything else as a honest "couldn't merge" with the
+    // returned message so the caller can persist it to AgentLog.
+    if (res.data.merged && res.data.sha) {
+      return { ok: true, sha: res.data.sha }
+    }
+    return { ok: false, reason: res.data.message || 'GitHub returned merged=false without a reason' }
+  } catch (err) {
+    // Common shapes per the GitHub docs:
+    //   405 Method Not Allowed  — PR not mergeable (conflicts, checks)
+    //   409 Conflict            — head SHA doesn't match
+    //   422 Unprocessable       — validation
+    //   403/401                 — auth / permissions
+    const e = err as { status?: number; message?: string }
+    return { ok: false, reason: e.message ?? String(err), status: e.status }
+  }
+}
+
 // ─── Error normalisation ──────────────────────────────────────────────────────
 
 function wrapError(err: unknown): GitHubError {

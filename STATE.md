@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.3 STARTED** — F24 **sub-phase 1 complete**: pure `evaluateAutoMerge` policy (the §5c "Honesty-of-Action floor") + `classifyVersionBump` + `RepoSetting` schema (default OFF at schema level) + 31 exhaustive boundary tests covering every §5c envelope rule including anti-gaming clamps. No runner wiring yet (sub-phase 2). Bench unchanged at 14/14 100%/100%. F23 polyglot complete. Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` (F23c s2) → `<F24 s1>`.
+> **Current phase:** **v2.3 IN PROGRESS** — F24 **sub-phase 2 complete**: runner-glue + GitHub merge API + cancelable dwell window + AgentLog persistence + runner wiring after every PR submission. Default-OFF schema means every existing scan path skips honestly with §5c r1 (bench unchanged at 14/14 100/100). Sub-phase 3 next (Settings UI for opt-in). Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` (F24 s1) → `<F24 s2>`.
 
 ---
 
@@ -109,6 +109,34 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.3 / F24 sub-phase 2 — runner-glue + GitHub merge API + dwell window + AgentLog; auto-merge now fires end-to-end)**
+Closes the gap left by sub-phase 1. Mendel now actually CALLS the merge API after the §5c envelope passes — under a cancelable dwell window, with every step logged to AgentLog. Default-OFF at the schema level means every existing scan path skips honestly with §5c r1 (bench unchanged at 14/14 100/100).
+- **`prisma/schema.prisma`** — `AgentLog` model resurrected (was removed pre-v1.0 per a Fix #14 comment; v2.3 has a real consumer now). Schema: `{ scanId?, issueId?, kind, payload, createdAt, tenantId? }` with indexes on every queryable field. Kind is an open enum (string prefix routing) so future F25/F26 events can write here without a migration. Also adds `Issue.autoMerge String?` — JSON-stringified terminal outcome: `{ verdict: 'merged'|'skipped'|'failed'|'cancelled', reasons[], mergedCommitSha?, mergedAt?, failureMessage? }`. Per CLAUDE.md §5c, even 'skipped' carries the reasons (no silent skip).
+- **`lib/github/index.ts`** — `mergePullRequest(pat, owner, repo, prNumber, options)` wrapper around `octokit.rest.pulls.merge`. Honest outcome shape: `{ ok: true, sha } | { ok: false, reason, status? }` — never silently considers a merge "kinda happened." Default `merge_method='merge'` (preserves PR history); future polish can let RepoSetting override.
+- **`lib/agent/automerge/runner-glue.ts`** (new) — the IO/orchestration layer between the pure policy and the world. `runAutoMergeFor(ctx, db, pat, io)`:
+  1. Gathers `AutoMergeInput` from RepoSetting + RejectionPattern + signal data
+  2. Calls `evaluateAutoMerge` (pure)
+  3. Writes an `automerge.verdict` AgentLog row WITH EVERY REASON (skip case ends here)
+  4. On YES: writes `automerge.dwell` started → sleeps the configured window → writes `automerge.dwell` completed
+  5. Calls the merge API; writes an `automerge.merge` log with ok + sha or reason
+  6. Updates `Issue.autoMerge` with the terminal outcome
+  All IO is injectable (Prisma surface, sleep, merge fn, clock) so unit tests pin every code path without real DB or network.
+- **Pure helpers exposed for tests + auditability:**
+  - **`computeSignalsAgree(breakingChanges, semanticDiff)`** — formal definition of §5c r2 "signals agree": both empty → agree; both non-empty AND symbol sets match → agree; otherwise disagree. semanticDiff=null → false (can't confirm).
+  - **`countSemanticDiffBreakingChanges(sd)`** — removed exports + signature changes (deprecations excluded — they're not strict breaks).
+  - **`parseRepoFullName('owner/name')`** — defensive, throws on malformed.
+  - **`clampDwell(seconds)`** — [0, 86400]. NaN → 0; Infinity → 86400 (clamps to MAX, the SAFER side of §5c r6 — auto-merge delayed maximally, not fired instantly). Tests caught the `!isFinite` short-circuit that initially returned 0 for Infinity.
+- **`lib/agent/runner.ts`** — wires `runAutoMergeFor` immediately after `db.issue.create` succeeds. Inputs assembled from in-scope state: `scanId`, `createdIssue.id`, `${owner}/${repo}`, parsed PR number, dep info, signals, confidence, smoke result, threshold, and `patHasMergeRights = capability.mode === 'direct'` (the existing capability check already distinguishes direct push vs. fork). Failures are NEVER fatal — auto-merge is additive, so a DB hiccup or octokit error logs honestly and the runner moves on. New SSE event field `merged?: boolean` on `'pr'` events for the UI's "auto-merged" chip in sub-phase 3.
+- **`tests/automerge-runner-glue.test.ts`** (new) — **19 tests** pinning the orchestration layer:
+  - Skip case: verdict logged + Issue.autoMerge='skipped' + ZERO sleep/merge calls + ALL reasons preserved (no first-match short-circuit at the IO layer either)
+  - Merge case: dwell respects configured `autoMergeDwellSeconds` + AgentLog kinds appear in order (verdict → dwell-start → dwell-complete → merge) + Issue.autoMerge='merged' with sha
+  - Failed-merge case: `automerge.merge` log carries `ok: false` + reason + HTTP status; terminal outcome='failed'
+  - Clamp: a 99,999s dwell config is clamped to 24h (defensive)
+  - 6 cases for `computeSignalsAgree` (both empty / one empty / matching sets / mismatched sets / null)
+  - `countSemanticDiffBreakingChanges`, `parseRepoFullName`, `clampDwell` boundary cases including NaN/Infinity (where the impl bug was caught)
+- **Verification rerun (all six surfaces):** typecheck ✅ · lint ✅ · `pnpm test` ✅ **582 passed** / 22 skipped (+19 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** (auto-merge is opt-in, so all existing fixtures skip honestly with §5c r1 → no calibration change) · `pnpm test:docker` not re-run (no Docker change).
+- **Next:** F24 sub-phase 3 — Settings UI section: per-repo toggle, required acknowledgement copy (the high-confidence-floor + irreversibility warnings), display of recent AgentLog events for transparency, optional override of confidence floor (subject to the policy's hard-clamp).
 
 **2026-06-01 (v2.3 / F24 sub-phase 1 — auto-merge policy: §5c "Honesty-of-Action floor" as a pure function with exhaustive boundary tests)**
 First sub-phase of F24. Mendel now has a pure `evaluateAutoMerge` function that enforces every CLAUDE.md §5c envelope rule + a schema-level default-OFF for the per-repo opt-in. No runner wiring, no UI, no GitHub merge call — those land in sub-phase 2 + 3 respectively. The whole VALUE of this commit is exhaustive boundary tests: every §5c rule pinned so a future refactor can't silently relax the policy.

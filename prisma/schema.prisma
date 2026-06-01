@@ -103,10 +103,47 @@ model Issue {
   /// Scan.language). On a polyglot monorepo a scan may end up with issues
   /// in mixed languages, so we tag each issue individually. Null on legacy.
   language     String?
+  /// v2.3 / F24 — auto-merge outcome blob (JSON-stringified):
+  ///   { verdict: 'merged' | 'skipped' | 'failed' | 'cancelled',
+  ///     reasons: string[],          // every §5c reason logged (skip case)
+  ///     mergedCommitSha?: string,   // when verdict='merged'
+  ///     mergedAt?: string,          // ISO timestamp
+  ///     failureMessage?: string }   // when verdict='failed'
+  /// Null on legacy and on scans where auto-merge wasn't evaluated. Per
+  /// CLAUDE.md §5c: every NO reason is logged — no silent action, no
+  /// silent skip — so even a 'skipped' verdict carries the reasons.
+  autoMerge    String?
 }
 
-// (Fix #14) AgentLog removed — model was defined but never written by the runner.
-// Reintroduce in v1.5 when we wire per-tool logging.
+/// v2.3 / F24 — per-tool / per-decision log. Resurrected from the
+/// pre-v1.0 Fix #14 ("model defined but never written"); now WRITTEN
+/// by the auto-merge gate per CLAUDE.md §5c ("every NO reason is logged
+/// — no silent action, no silent skip"). Other gates can write here too
+/// as v2.3 features land.
+///
+/// Distinct from Issue.autoMerge: that column holds the per-issue
+/// terminal verdict; AgentLog holds the per-event audit trail (e.g.,
+/// dwell-window start/cancel, merge API call result, capability check
+/// failures). One Issue may produce multiple AgentLog rows.
+model AgentLog {
+  id        String   @id @default(cuid())
+  scanId    String?
+  issueId   String?
+  /// Discriminator. Today: 'automerge.verdict' / 'automerge.dwell' /
+  /// 'automerge.merge' / 'automerge.capability'. Open enum: new tools
+  /// add new prefixes without a schema migration.
+  kind      String
+  /// JSON-stringified payload — shape depends on `kind`. Keeps the
+  /// schema light + lets each event class evolve independently.
+  payload   String
+  createdAt DateTime @default(now())
+  tenantId  String?
+
+  @@index([scanId])
+  @@index([issueId])
+  @@index([kind])
+  @@index([createdAt])
+}
 
 /// v2.1 / F22 — "Point at any API" inspection report. Pure analysis: no
 /// repo, no PR, no sandbox. Each row is a shareable permalinkable report

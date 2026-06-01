@@ -16,13 +16,14 @@ import { parseBreakingChanges } from './signals/changelog'
 // (TS = pure delegation; Python = griffe-in-Docker). Type import stays.
 import type { SemanticDiff } from './signals/semantic-diff'
 import { calculateConfidence } from './confidence/score'
-import { chooseSubmissionMode, explainSubmissionMode } from './confidence/threshold'
+import { chooseSubmissionMode, explainSubmissionMode, resolveThreshold } from './confidence/threshold'
 import { summarizeScanConfidence } from './confidence/summary'
 import { buildAllowlist } from '@/lib/sandbox/iptables-allowlist'
 import { diagnoseIssue } from './phases/diagnose'
 import { patchFileSmart } from './patching'
 import { submitDraftPR } from './phases/submit'
 import { assessContributionEligibility, gateSubmission, type EligibilityVerdict } from './eligibility'
+import { runAutoMergeFor } from './automerge/runner-glue'
 // v2.0: the runner no longer imports executor functions directly — it goes
 // through the SandboxProvider interface (cloud-readiness, V2_PLAN §F19
 // supporting work). volumeName is a pure helper, kept as a static import.
@@ -82,7 +83,10 @@ export type AgentEvent =
   | { type: 'log'; message: string }
   | { type: 'issue'; dep: string; currentVersion: string; latestVersion: string }
   | { type: 'verify'; phase: 'A' | 'B' | 'C'; success: boolean; output: string }
-  | { type: 'pr'; url: string; branch: string }
+  // `merged` is set ONLY when the §5c auto-merge gate fires and the merge
+  // call succeeds (v2.3 / F24). The SSE consumer renders a different chip
+  // in that case (e.g. green "auto-merged" badge).
+  | { type: 'pr'; url: string; branch: string; merged?: boolean }
   | { type: 'done'; summary: string }
   | { type: 'error'; message: string }
 
@@ -845,9 +849,69 @@ export async function runScan(
         } else if (!verificationPassed && (phaseBStdout || phaseBStderr)) {
           phaseAOutput = `${phaseBStdout ?? ''}\n${phaseBStderr ?? ''}`.trim()
         }
-        await db.issue.create({
+        const createdIssue = await db.issue.create({
           data: persistIssueData({ scanId, dep, breakingChanges, diagnosis, patches, verificationPassed, prUrl, semanticDiff, confidenceScore, phaseAOutput, packageDir: currentPackage.dir, language: adapter.id }),
         })
+
+        // ── AUTO-MERGE GATE (v2.3 / F24) ──────────────────────────────────
+        // Run the §5c "Honesty-of-Action floor" against this issue. The
+        // pure policy + glue both write to AgentLog (every reason logged,
+        // even on skip). Default-OFF at the RepoSetting schema layer
+        // means this is a no-op for repos that never opted in — the
+        // policy returns 'skipped' + r1 immediately.
+        //
+        // Failures here NEVER cascade into the runner — auto-merge is an
+        // additive behavior, so a crash in the gate (DB hiccup, octokit
+        // error, etc.) is logged honestly and we continue with the next
+        // dep. The PR itself remains open in its original state.
+        if (prUrl) {
+          const prNumberMatch = prUrl.match(/\/pull\/(\d+)/)
+          const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : null
+          if (prNumber !== null) {
+            try {
+              const depChangeType = breakingChanges[0]?.changeType ?? 'version-bump'
+              const result = await runAutoMergeFor(
+                {
+                  scanId,
+                  issueId: createdIssue.id,
+                  repoFullName: `${owner}/${repo}`,
+                  prNumber,
+                  prUrl,
+                  depName: dep.name,
+                  depChangeType,
+                  fromVersion: dep.currentVersion,
+                  toVersion: dep.latestVersion,
+                  breakingChanges,
+                  semanticDiff,
+                  confidence: confidenceScore,
+                  verificationPassed,
+                  smokePassed,
+                  threshold: resolveThreshold({ threshold: options.confidenceThreshold }),
+                  // capability.mode === 'direct' means push access on
+                  // upstream — the same permission tier required to merge
+                  // (per the GitHub permissions model). Fork-based PRs
+                  // can't be merged by the bot.
+                  patHasMergeRights: capability.mode === 'direct',
+                },
+                db,
+                pat,
+              )
+              if (result.outcome.verdict === 'merged') {
+                log(`Auto-merged ${dep.name} ${dep.currentVersion} → ${dep.latestVersion} (${result.outcome.mergedCommitSha?.slice(0, 7)})`)
+                emit({ type: 'pr', url: prUrl, branch: '', merged: true })
+              } else if (result.outcome.verdict === 'failed') {
+                log(`Auto-merge attempt failed: ${result.outcome.reasons[0]}`)
+              } else {
+                // Skipped: log a single-line summary; the full reasons live
+                // in AgentLog + Issue.autoMerge for an audit.
+                log(`Auto-merge skipped (${result.outcome.reasons.length} §5c reason(s); see AgentLog)`)
+              }
+            } catch (autoMergeErr) {
+              log(`Auto-merge gate errored (non-fatal): ${String(autoMergeErr).slice(0, 160)}`)
+            }
+          }
+        }
+
         // v2.1 / F21 — bump the in-memory per-package counter; persisted to
         // ScanPackage.issuesFound after the loop so we make one update per
         // package instead of one per issue.
