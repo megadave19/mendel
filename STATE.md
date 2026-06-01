@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.1 RELEASE GATE PASSED** — F21 + F22 + §11b.1 + visual baseline all green across 6 verification surfaces. Next: **v2.2 (F23 Polyglot — Python first)** per V2_PLAN §F23.
+> **Current phase:** **v2.2 IN PROGRESS** — F23 core (LanguageAdapter abstraction + TS adapter + registry) landed. Next sub-phases: **F23a Python → F23b Go → F23c Rust** per V2_PLAN §F23.
 
 ---
 
@@ -109,6 +109,17 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23 core — LanguageAdapter abstraction + TS adapter + registry)**
+v1.x/v2.0/v2.1 had TypeScript baked into the runner. F23 core extracts a seam so Python/Go/Rust can plug in independently (V2_PLAN.md §F23 sub-phase order). This commit is the FOUNDATION — no behavior change for existing TS scans, no Python/Go/Rust support yet, no runner-wide refactor. Just the seam, ready for F23a Python.
+- **`lib/agent/lang/types.ts`** (new) — the `LanguageAdapter` interface: `detect`, `detectStaleDeps`, `semanticDiff`, optional `parseBreakingChanges`. Each adapter declares a `maxBucket` (the highest confidence bucket its analyzer can reach under ideal conditions) — §5b v2 rule 1 "confidence ceilings are language-aware" encoded in the type system so it can never silently inflate.
+- **`lib/agent/lang/typescript.ts`** (new) — wraps today's pipeline. PURE delegation — no new logic. `detectStaleDeps` → existing `detectStaleDeps`. `semanticDiff` → existing `parseSemanticDiff`. `maxBucket: 'high'` (tsc on .d.ts is the strongest available). `sandboxImage` pinned to the existing node image. Byte-identical-behavior contract enforced by the eval bench (which catches calibration drift end-to-end) + the lang-adapter unit tests.
+- **`lib/agent/lang/registry.ts`** (new) — `selectAdapter(repoPath) → LanguageAdapter | null`. Priority order: future Python/Go/Rust adapters slot in AHEAD of TypeScript so a polyglot repo's more-specific language wins. v2.2.0 ships TS only.
+- **`lib/agent/runner.ts`** — wired to call `selectAdapter` after workspace detection. **Honest fail-fast** when no adapter matches: rather than silently defaulting to TS on a Python repo, the runner fails the scan with `errorMessage` naming what's supported + what's planned. The §5b "never silently default" rule applied to language selection.
+- **Schema** — `Scan.language String?` + `Issue.language String?` added (both nullable for back-compat with v1.5/v2.0/v2.1 scans). The runner now persists `Scan.language = adapter.id`.
+- **+11 unit tests** (`tests/lang-adapter.test.ts`): `typescriptAdapter.detect` across plain JS, TS+tsconfig, Python-only, and empty repos; `selectAdapter` returns TS for JS/TS + **NULL for Python-only** (the honesty rule explicitly tested); contract pins on `maxBucket`, `manifestFile`, `sandboxImage`.
+- **Deferred to v2.2.1** (foundation done first per V2_PLAN incremental rule): full runner-wide refactor to route ALL language-specific calls through the adapter (buildReferenceIndex, findPackageUsageSites, patchFileSmart). Each lifted as a snapshot-tested step.
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **455 passed** (was 444, +11) / 13 skipped. `pnpm eval` ✅ no regression vs. v2.1 baseline. The bench is the contract that catches "TS adapter wrapper shifted calibration" — it didn't.
 
 **2026-06-01 (v2.1 RELEASE GATE — all 6 verification surfaces green)**
 v2.1 closes per V2_PLAN.md §F21/§F22 gate. Six surfaces independently verified:

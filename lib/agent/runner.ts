@@ -4,6 +4,7 @@ import { mkdirSync, rmSync, readFileSync } from 'fs'
 import simpleGit from 'simple-git'
 import { cloneRepo, getRepoMeta, assessSubmitCapability, listOpenIssues } from '@/lib/github'
 import { detectWorkspace, type PackageRef, type WorkspaceDetection } from './workspace/detect'
+import { selectAdapter } from './lang/registry'
 import { pickIssueForDep, formatIssueReference } from './issue-link'
 import type { RepoIssue } from '@/lib/github/types'
 import { detectStaleDeps } from './phases/detect'
@@ -214,9 +215,29 @@ export async function runScan(
         log(`(workspace) unresolved pattern "${u.pattern}" — ${u.reason}`)
       }
     }
+    // v2.2 / F23 core — select the language adapter for this repo. Today
+    // the registry only has TypeScript registered, so a non-JS/TS repo
+    // (Python, Go, Rust) will return null until F23a/b/c add their adapters.
+    // We FAIL THE SCAN honestly when no adapter matches — refusing to
+    // silently default to TS on a repo we can't analyze (§5b).
+    const adapter = selectAdapter(repoPath)
+    if (!adapter) {
+      const msg = `No language adapter available for this repo — Mendel currently supports TypeScript/JavaScript. Python, Go, and Rust are planned in v2.2.x.`
+      log(`⚠ ${msg}`)
+      emit({ type: 'error', message: msg })
+      await db.scan
+        .update({ where: { id: scanId }, data: { status: 'failed', errorMessage: msg, completedAt: new Date() } })
+        .catch(() => {})
+      return
+    }
+    log(`Language: ${adapter.displayName} (max bucket: ${adapter.maxBucket})`)
+
     await db.scan.update({
       where: { id: scanId },
-      data: { workspaceKind: workspace.kind === 'single' ? null : workspace.kind },
+      data: {
+        workspaceKind: workspace.kind === 'single' ? null : workspace.kind,
+        language: adapter.id,
+      },
     })
 
     // Compute per-package depsCount for ranking + the 3D dep graph. The graph

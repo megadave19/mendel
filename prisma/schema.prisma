@@ -38,6 +38,11 @@ model Scan {
   /// legacy v1.5 scans (back-compat). Drives UI (monorepo line on S3, package
   /// chips on IssueCard, mini-stats on S4).
   workspaceKind String?
+  /// v2.2 / F23 — the language adapter the runner picked for this scan:
+  /// 'typescript' | 'python' | 'go' | 'rust'. Null on legacy v1.5/v2.0/v2.1
+  /// scans (back-compat); drives the <LangBadge> UI chip + per-language
+  /// confidence ceiling disclosure (§5b v2 rule 1).
+  language      String?
   issues        Issue[]
   packages      ScanPackage[]
 }
@@ -94,6 +99,10 @@ model Issue {
   /// to (e.g. 'packages/ui' or '.'). Null on legacy v1.5 issues. Drives the
   /// per-package chip on IssueCard and the dep-graph clustering.
   packageDir   String?
+  /// v2.2 / F23 — the language adapter that produced this issue (mirrors
+  /// Scan.language). On a polyglot monorepo a scan may end up with issues
+  /// in mixed languages, so we tag each issue individually. Null on legacy.
+  language     String?
 }
 
 // (Fix #14) AgentLog removed — model was defined but never written by the runner.
