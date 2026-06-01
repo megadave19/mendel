@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.1 FEATURE COMPLETE** — F21 (monorepo) + F22 (Inspect API) done end-to-end. Pending: v2.1 release gate (bench + visual baseline). Bench 8/8 100%/100%.
+> **Current phase:** **v2.1 RELEASE GATE PASSED** — F21 + F22 + §11b.1 + visual baseline all green across 6 verification surfaces. Next: **v2.2 (F23 Polyglot — Python first)** per V2_PLAN §F23.
 
 ---
 
@@ -109,6 +109,15 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.1 RELEASE GATE — all 6 verification surfaces green)**
+v2.1 closes per V2_PLAN.md §F21/§F22 gate. Six surfaces independently verified:
+- typecheck ✅ · lint ✅ (no warnings)
+- `pnpm test` ✅ **444 passed / 13 skipped** (was 406 at start of v2.1; +38 from F21 detection + F22 inspect)
+- `pnpm eval` ✅ **8/8 fixtures**, 100% bucket + 100% range, no calibration regression vs. v2.1 baseline. F21 per-package loop is a CALL-SITE refactor — bench would have caught any calibration drift; it didn't.
+- Playwright **full suite** ✅ **55/56 + 1 skipped**. New baseline written for `/inspect` (rest-state). Dashboard baseline updated (legit data drift: ~6 new scans accumulated this session — scan-history table grew from 900px → 1262px tall). No layout regression.
+- `pnpm test:docker` ✅ **8/8 across 4 files**: iptables-allowlist + cache-eviction + sandbox-smoke (3) + workspace-install (3). §11b.1 honored end-to-end.
+- **Deferred to v2.1.1 polish** (not blocking the gate): (a) monorepo S4 visual baseline (needs a real workspace scan in a clean state; current dev env doesn't have one), (b) workspace detection on the New Scan eligibility preview, (c) tighten the §11b.1 real-container test to assert actual dep resolution under a controlled cache state.
 
 **2026-06-01 (v2.1 / F22 — "Point at any API" Mode)**
 A standalone breaking-change report: paste `package + from + to` → calibrated report → permalink. No repo, no PR, no sandbox. Reuses the existing changelog + semantic-diff signals and the scorer. Per V2_PLAN §F22.

@@ -96,6 +96,20 @@ test('visual — settings', async ({ page }) => {
   })
 })
 
+// v2.1 / F22 — Inspect API rest state (form, no result yet). The result
+// panel renders only post-submit + depends on network calls, so the
+// rest-state baseline is the stable thing to lock in. Result-state
+// snapshots are e2e-mocked in tests/e2e/inspect.spec.ts.
+test('visual — inspect (rest, form empty)', async ({ page }) => {
+  await page.goto('/inspect', { waitUntil: 'networkidle' })
+  await page.waitForTimeout(SETTLE_MS)
+  await expect(page).toHaveScreenshot('inspect.png', {
+    fullPage: true,
+    maxDiffPixelRatio: 0.02,
+    mask: [page.getByRole('img', { name: /bones the maintainer/i })],
+  })
+})
+
 test('visual — scan demo (Live Console)', async ({ page }) => {
   await page.goto('/scan/demo', { waitUntil: 'networkidle' })
   // Demo mock scan ticks rapidly. Wait until DONE so layout settles.
