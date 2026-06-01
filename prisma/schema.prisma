@@ -140,3 +140,41 @@ model RejectionPattern {
   createdAt       DateTime @default(now())
   embedding       Bytes?
 }
+
+/// v2.3 / F24 — per-repo auto-merge configuration.
+///
+/// **CLAUDE.md §5c rule 1: opt-in, default OFF — enforced at the SCHEMA level.**
+/// A repo whose row doesn't exist (i.e., never configured) is implicitly
+/// auto-merge-disabled. A row with `autoMergeEnabled = false` is also
+/// auto-merge-disabled. The policy function (lib/agent/automerge/policy.ts)
+/// requires the explicit `true` AND every other §5c envelope condition.
+///
+/// **Floor + dwell are bounded by the policy code, not by Prisma constraints.**
+/// SQLite doesn't enforce CHECK constraints uniformly across drivers; we
+/// hard-clamp `autoMergeConfidenceFloor ≥ standard threshold` in the
+/// policy + hard-clamp `autoMergeDwellSeconds` to a sane range there.
+/// Storing the raw user-supplied values here keeps the UI honest about
+/// "what you asked for" vs. "what was effective."
+///
+/// `tenantId` is v3-ready (CLAUDE.md §1) — null today (single-tenant
+/// local), keyed for cloud's multi-tenancy.
+model RepoSetting {
+  id                          String   @id @default(cuid())
+  /// "owner/name" — unique key. v3 will partition by (tenantId, repoFullName).
+  repoFullName                String   @unique
+  /// CLAUDE.md §5c rule 1 — DEFAULT FALSE at schema level. Non-negotiable.
+  autoMergeEnabled            Boolean  @default(false)
+  /// CLAUDE.md §5c rule 3 — high confidence floor. Default 90.
+  /// Anti-gaming (§5c rule 7): the policy hard-clamps ≥ standard threshold
+  /// so a misconfigured low floor can't unlock auto-merge.
+  autoMergeConfidenceFloor    Int      @default(90)
+  /// CLAUDE.md §5c rule 6 — reversible cancelable dwell window before merge.
+  /// Default 60s. Owner can cancel via UI during this window.
+  autoMergeDwellSeconds       Int      @default(60)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  tenantId                    String?
+
+  @@index([repoFullName])
+  @@index([tenantId])
+}

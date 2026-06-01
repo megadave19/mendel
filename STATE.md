@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23c **sub-phase 2 complete**: real cargo-semver-checks in Docker (`mendel-rust-sandbox:v2.2`) producing live findings (semver 0.11.0→1.0.0: 11 removed exports). Schema gains `'cargo-semver-checks'` tier in lockstep across 4 spots. Bench at 14/14 100%/100% (new baseline). **F23a + F23b + F23c engineering complete — full F23 polyglot at parity**. Sub-gate Loom on real public Python/Go/Rust repos is owner-side. Next engineering: **F24 auto-merge** (v2.3 autonomy). Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` (F23c s1) → `<F23c s2>`.
+> **Current phase:** **v2.3 STARTED** — F24 **sub-phase 1 complete**: pure `evaluateAutoMerge` policy (the §5c "Honesty-of-Action floor") + `classifyVersionBump` + `RepoSetting` schema (default OFF at schema level) + 31 exhaustive boundary tests covering every §5c envelope rule including anti-gaming clamps. No runner wiring yet (sub-phase 2). Bench unchanged at 14/14 100%/100%. F23 polyglot complete. Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` (F23c s2) → `<F24 s1>`.
 
 ---
 
@@ -109,6 +109,33 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.3 / F24 sub-phase 1 — auto-merge policy: §5c "Honesty-of-Action floor" as a pure function with exhaustive boundary tests)**
+First sub-phase of F24. Mendel now has a pure `evaluateAutoMerge` function that enforces every CLAUDE.md §5c envelope rule + a schema-level default-OFF for the per-repo opt-in. No runner wiring, no UI, no GitHub merge call — those land in sub-phase 2 + 3 respectively. The whole VALUE of this commit is exhaustive boundary tests: every §5c rule pinned so a future refactor can't silently relax the policy.
+- **`prisma/schema.prisma`** — new `RepoSetting` model. `autoMergeEnabled Boolean @default(false)` at the SCHEMA LEVEL (CLAUDE.md §5c rule 1: opt-in, default OFF — non-negotiable). `autoMergeConfidenceFloor Int @default(90)` and `autoMergeDwellSeconds Int @default(60)` track user intent; the policy hard-clamps the effective floor ≥ AUTO_MERGE_HARD_FLOOR (90) AND ≥ standard threshold (§5c rule 7 anti-gaming). `tenantId String?` v3-ready. `prisma db push` applied; client regenerated.
+- **`lib/agent/automerge/policy.ts`** (new) — pure function `evaluateAutoMerge(input): { shouldMerge, reasons }`. No IO, no clock, no DB — the runner gathers inputs from the scan/PAT/RepoSetting/rejection store and calls this. **ALL applicable NO reasons are returned, not the first** (anti-gaming: an op who "fixes" one reason still sees the others stacked, so they can't iteratively flip the envelope open one bit at a time). Reasons are ordered by §5c rule number so the AgentLog reads top-down.
+  - **§5c rule 1** (opt-in + PAT merge rights): null setting OR `autoMergeEnabled=false` OR `patHasMergeRights=false` → block.
+  - **§5c rule 2** (narrow allowlist + no break + signals agree): bump kind not in {'patch','minor'} OR changelog ≥ 1 break OR semantic-diff ≥ 1 break OR semantic-diff `null` (signal didn't run = can't confirm) OR signals disagree → block.
+  - **§5c rule 3** (high confidence floor): overall < effective floor OR bucket ≠ 'high' → block. Effective floor = `MAX(configured, hard-floor=90, standard threshold)` — anti-gaming clamp prevents a misconfigured low floor in RepoSetting from unlocking auto-merge below the user's own PR-promotion bar.
+  - **§5c rule 4** (tests AND smoke pass): verificationPassed=false OR smokePassed `null` (not attempted) OR smokePassed=false → block. **F20 hard-dependency: `smokePassed=null` is treated as NO**, not as "we couldn't check" — without a passing smoke there's no "the app boots post-patch" evidence and auto-merge would be guessing.
+  - **§5c rule 5** (no rejection history): `hasRejectionHistory=true` → block.
+- **`classifyVersionBump(from, to)`** — semver-like classifier returning `'patch' | 'minor' | 'major' | 'prerelease' | 'unknown'`. **EVERY 0.x bump → 'major'** even when the second slot moves (semver §4: 0.y.z carries no stability guarantees; conservative honest treatment). Strips leading `v` (Go module convention). Prerelease detection requires the base (before `-`) to parse as semver — first-cut naïve `.includes('-')` mis-classified `not-a-version` as 'prerelease'; caught by the unknown-input boundary test before merge.
+- **`tests/automerge-policy.test.ts`** (new) — **31 boundary tests**:
+  - 1 passing baseline (every rule aligned)
+  - §5c r1: 3 cases (null setting / explicit OFF / no merge perms)
+  - §5c r2: 8 cases (allowlist on 'minor' yes; 'major'/'prerelease'/'unknown' no; changelog/semantic-diff/null/disagreement all block)
+  - §5c r3: 5 cases (numeric floor; bucket='medium' even at 99 — language-aware Rust ceiling; bucket='low'; threshold-clamp anti-gaming; hard-floor-clamp anti-gaming)
+  - §5c r4: 3 cases (verify=false; smoke=null F20-as-hard-dep; smoke=false)
+  - §5c r5: 1 case (rejection history blocks)
+  - Anti-gaming: 2 cases (multi-rule reasons all returned; passing baseline has empty reasons array)
+  - classifyVersionBump: 8 cases (patch/minor/major; 0.x conservative; prerelease both sides; v-strip; unknown-input; identity edge case)
+- **Sub-phase 1 ships zero runtime behavior changes** — the policy is dormant until sub-phase 2 wires it into the runner. This is deliberate: ship the honesty surface first + verify with tests, then connect.
+- **Anti-gaming wins captured by tests:**
+  - The hard-floor + threshold clamps both verified (setting `autoMergeConfidenceFloor=50` does NOT unlock auto-merge at score 80)
+  - bucket='medium' at numeric 99 is blocked (language-aware ceiling honestly binds — Rust adapters can't auto-merge even on perfect agreement because of the public-API-only cap)
+  - Multi-rule scenario asserts ALL reasons present (no first-match short-circuit that would let an op iteratively unlock)
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **563 passed** / 22 skipped (+31 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** · `pnpm test:docker` not re-run (no Docker change).
+- **Next:** F24 sub-phase 2 — runner wiring (compute `AutoMergeInput` from scan context + RepoSetting lookup + rejection-history check) + GitHub merge API call (`octokit.pulls.merge`) + cancelable dwell window (`autoMergeDwellSeconds`) + AgentLog persistence of every verdict (shouldMerge + every reason). Then sub-phase 3: Settings UI with required acknowledgement copy.
 
 **2026-06-01 (v2.2 / F23c sub-phase 2 — cargo-semver-checks Docker integration: Rust semantic-diff is REAL, F23 polyglot block COMPLETE)**
 Closes the F23c stub gap left by sub-phase 1. Mendel now runs real `cargo-semver-checks` API diffs for Rust crates inside a dedicated Docker sandbox image, returning a normalized `SemanticDiff` that flows through the language-agnostic scorer. **Completes F23 at engineering parity for all four supported languages** (TS, Python, Go, Rust). Mirrors F23a griffe + F23b apidiff Docker integration commits.
