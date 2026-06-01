@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23b **sub-phase 1 complete** (Go: detection + go.mod parser + proxy.golang.org staleness + honest semanticDiff stub + bench fixture + 21-test unit suite). Bench at 10/10 100%/100% (new baseline). F23a engineering complete; F23b sub-phase 2 (apidiff in Docker + §11b.1) next. Last commit `42f9097` (F23a sub-gate closeout); F23b sub-phase 1 commit follows.
+> **Current phase:** **v2.2 IN PROGRESS** — F23b **sub-phase 2 complete**: real apidiff in Docker (`mendel-go-sandbox:v2.2`) producing live findings (httprouter v1.0→v1.3: 2 removed + 2 sig changes). Schema gains `'apidiff'` tier in lockstep across 4 spots. Bench at 11/11 100%/100% (new baseline). **F23b engineering complete**; sub-gate Loom on a real public Go repo is owner-side. Next engineering: **F23c Rust** (cargo-semver-checks). Last commits `42f9097` → `2219c0d` → `<F23b s2>`.
 
 ---
 
@@ -109,6 +109,33 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23b sub-phase 2 — apidiff Docker integration: Go semantic-diff is REAL)**
+Closes the F23b stub gap left by sub-phase 1. Mendel now runs a real `apidiff -m` API diff for Go modules inside a dedicated Docker sandbox image, returning a normalized `SemanticDiff` that flows through the language-agnostic scorer. Mirrors the F23a griffe Docker integration commit verbatim — same shape, same §11b.1 discipline, same lockstep schema rollout.
+- **`docker/go-sandbox.Dockerfile`** (new) — `golang:1.22-bookworm` + `git` + `ca-certificates` + `apidiff` (compiled at image-build via `go install golang.org/x/exp/cmd/apidiff@latest`) + Mendel's wrapper compiled as a static binary. Non-root `mendel` user (CLAUDE.md §5 rule 11). `GOTOOLCHAIN=auto` so Go can auto-fetch the toolchain `x/exp` now requires (≥ 1.25); the §11b.1 real-container test pins runtime behavior against that auto-upgrade. `/go` chowned to mendel so `go get` can write to `/go/pkg/sumdb` + `/go/pkg/mod`.
+- **`docker/go-apidiff-diff.go`** (new) — wrapper compiled into the image. Takes `(module, fromVersion, toVersion)`, creates two throwaway modules in tmpdirs, runs `go get module@version` in each, extracts API surfaces via `apidiff -m -w`, then diffs them with `apidiff -m old.api new.api`. Parses the textual diff output (`Incompatible changes:` block, `- pkg.Foo: removed`, `- pkg.X: changed from Y to Z`) into the JSON shape `lib/sandbox/go-executor.ts` expects. NEVER fabricates: an unbucketed line lands in `unanalyzableSymbols` with a precise reason so a future apidiff release that adds a new line shape fails LOUDLY, not silently.
+- **`lib/sandbox/go-executor.ts`** — `runApidiff` now invokes the real wrapper. Sub-phase 1's "image not built — sub-phase 2 will land it" error message still fires deterministically on dev boxes that haven't pulled the image.
+- **`lib/agent/lang/go.ts`** — semanticDiff now emits `analysisTier: 'apidiff'` on the happy path. Honest fallback paths unchanged (Docker down / image missing / module fetch failed → `'ast-only'` + a clear reason in `unanalyzableSymbols`).
+- **Schema lockstep rollout for `'apidiff'`** (mirrors F23a's `'griffe'` rollout):
+  - `lib/agent/signals/semantic-diff.ts` — `AnalysisTierSchema` gains `'apidiff'`
+  - `lib/agent/confidence/score.ts` — `AnalysisCoverageSchema.analysisTier` gains `'apidiff'`
+  - `lib/agent/confidence/summary.ts` — `TierCountsSchema.apidiff` + default object both extended
+  - `components/phase-d/types.ts` — `ConfidenceData.tier` extended
+- **§11b.1 win — caught THREE real bugs before merge:**
+  - **`apidiff -m` flag.** First-cut wrapper used `apidiff -w` (package mode) + `apidiff old new` (also package mode). apidiff returned "found no packages for module ..." because module-mode requires `-m` on BOTH the extraction (`-m -w`) and the diff (`apidiff -m old new`). Real-container test caught it on first run.
+  - **Non-root GOPATH permissions.** `/go/pkg/sumdb` was root-owned in the base image; the mendel user got "permission denied" on the first `go get`. Fix: chown /go to mendel in the Dockerfile.
+  - **Format-string `v%s` bug.** Wrapper logged `vv1.7.0` because the version was already `v`-prefixed by `normalizeVersion` and the format string added another `v`. Surfaced via misleading error messages during the live debugging; all `v%s` → `%s`.
+- **`tests/go-apidiff-container.test.ts`** (new, gated `DOCKER_INTEGRATION=1`) — 3 cases against live Docker per CLAUDE.md §11b.1:
+  1. Image builds + apidiff is on PATH for non-root user (apidiff `-help` exits non-zero + writes to stderr — both streams combined to read the banner)
+  2. `runApidiff` against a real Go module pair (`github.com/julienschmidt/httprouter` v1.0.0 → v1.3.0, hand-verified to produce 2 removed + 2 signature changes) — asserts `removedExports.length > 0` so a regression to silent-empty would fail loudly
+  3. The Go adapter round-trips that output into a valid `SemanticDiff` with `analysisTier='apidiff'`
+- **`tests/go-adapter.test.ts`** — fallback test rewritten to use an intentionally-unresolvable module path (`example.com/mendel/test/nonexistent-please-fail`) so it's deterministic whether or not the Go sandbox image is built on the dev box (same fix pattern F23a used).
+- **`tests/confidence-summary.test.ts`** — `tierCounts` literal extended with `apidiff: 0`.
+- **`eval/fixtures/go-httprouter-1-to-1-3.json`** (new) — bench fixture based on the actual apidiff output. Both signals partially agree (changelog flags 1 symbol, apidiff flags 4). Bucket lands medium. Bench: **11/11 100%/100%**; baseline re-seeded as the v2.2 F23b sub-phase 2 honesty anchor.
+- **`pnpm test:docker`** wired to include `go-apidiff-container`.
+- **Module-scope honest note:** the wrapper handles single-package modules (treats the module path as the root import path). Multi-package modules (`module/...`) would require enumerating packages via `go list` and diffing each — tracked as a v2.2.x follow-on. Honest surfacing in `unanalyzableSymbols` when the root-as-package resolution fails.
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **508 passed** / 19 skipped (+3 gated `go-apidiff-container`) · `pnpm eval` ✅ **11/11 100%/100%** vs. new baseline · `pnpm test:docker` ✅ **14/14** (added the 3 Go apidiff cases).
+- **F23b sub-gate remaining (owner-side, not engineering):** end-to-end Go scan on a real public repo with a Loom per V2_PLAN.md §F23 sub-gate. Engineering is unblocked for **F23c Rust** in parallel.
 
 **2026-06-01 (v2.2 / F23b sub-phase 1 — Go adapter foundation: detection + go.mod + proxy.golang.org + honest stub)**
 First sub-phase of F23b. Mirrors F23a sub-phase 1's shape exactly. Mendel can now REGISTER a Go repo without silently defaulting to TS (the §5b honesty rule for language selection extended to Go). Stale-deps work end-to-end against proxy.golang.org; semantic-diff is an HONEST stub pending the apidiff Docker integration (V2_PLAN.md §F23b sub-phase 2). The sub-phase 1 + 2 split is identical to F23a's foundation/integration split — same incremental discipline, same §11b.1 gate at sub-phase 2.

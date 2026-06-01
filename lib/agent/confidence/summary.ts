@@ -28,6 +28,8 @@ export const TierCountsSchema = z.object({
   // with AnalysisTierSchema. Distribution shows up in the scan summary so
   // a polyglot scan is honest about HOW each issue was analyzed.
   griffe: z.number().int().min(0),
+  // v2.2 / F23b — `apidiff` is the Go adapter's tier; same lockstep rule.
+  apidiff: z.number().int().min(0),
   'api-extractor': z.number().int().min(0),
   'ast-only': z.number().int().min(0),
   none: z.number().int().min(0),
@@ -67,7 +69,7 @@ export function summarizeScanConfidence(issues: Pick<Issue, 'confidence' | 'veri
   let calibrated = 0
   let sumScore = 0
   const bucketCounts = { high: 0, medium: 0, low: 0 }
-  const tierCounts = { dts: 0, griffe: 0, 'api-extractor': 0, 'ast-only': 0, none: 0 }
+  const tierCounts = { dts: 0, griffe: 0, apidiff: 0, 'api-extractor': 0, 'ast-only': 0, none: 0 }
   let verificationFailed = 0
   let cappedCount = 0
 

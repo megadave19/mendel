@@ -1,0 +1,43 @@
+{
+  "id": "go-httprouter-1-to-1-3",
+  "packageName": "github.com/julienschmidt/httprouter",
+  "fromVersion": "v1.0.0",
+  "toVersion": "v1.3.0",
+  "description": "v2.2 / F23b sub-phase 2 case: real Go pair where apidiff and the changelog AGREE on a breaking change (Router.NotFound signature changed). Per-symbol scoring routes the bothAgree case for the matching symbol + semanticOnly for the symbols only apidiff caught. Inputs taken from live apidiff-diff output captured 2026-06-01 against mendel-go-sandbox:v2.2.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "go"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "Router.NotFound",
+        "changeType": "signature-changed",
+        "description": "Router.NotFound was changed from net/http.HandlerFunc to net/http.Handler.",
+        "sourceUrl": "https://github.com/julienschmidt/httprouter/releases/tag/v1.3.0"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": [
+        "NotFound",
+        "Router.RedirectCaseInsensitive"
+      ],
+      "signatureChanges": [
+        { "symbol": "Handle", "before": "func(net/http.ResponseWriter, *net/http.Request, map[string]string)", "after": "func(net/http.ResponseWriter, *net/http.Request, Params)" },
+        { "symbol": "Router.NotFound", "before": "net/http.HandlerFunc", "after": "net/http.Handler" }
+      ],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "apidiff"
+    },
+    "patchedFilePaths": ["go.mod", "internal/router/handlers.go"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 60, "max": 79 },
+    "perSymbolHits": [
+      { "symbol": "Router.NotFound", "shouldDetect": true }
+    ]
+  }
+}

@@ -61,9 +61,10 @@ export interface ConfidenceData {
   /** True if verification failure capped the score at 50 (forces "low"). */
   capped: boolean
   /** Which signal tier produced the analysis (UI shows in tooltip).
-   *  v2.2 / F23a — `'griffe'` is the Python adapter's analyzer; kept in
-   *  lockstep with AnalysisTierSchema. */
-  tier: 'dts' | 'griffe' | 'api-extractor' | 'ast-only' | 'none'
+   *  v2.2 / F23a — `'griffe'` is the Python adapter's analyzer.
+   *  v2.2 / F23b — `'apidiff'` is the Go adapter's analyzer.
+   *  Both peers of `'dts'`; kept in lockstep with AnalysisTierSchema. */
+  tier: 'dts' | 'griffe' | 'apidiff' | 'api-extractor' | 'ast-only' | 'none'
   /** 0–100 — proportion of OLD version's symbols we could analyze. */
   coveragePercent: number
   /** Per-symbol scores with optional human-readable tag. Sorted alphabetically. */

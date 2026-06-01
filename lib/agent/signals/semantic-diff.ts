@@ -47,8 +47,15 @@ import type { ReferenceIndex, UsageSite } from './ast-parser'
  * findings through a TypeScript label. (Pre-F23a the adapter shipped
  * `'dts'` as a proxy; the V2_PLAN.md §F23a sub-gate item flagged
  * extending the enum here as the right fix.)
+ *
+ * v2.2 / F23b sub-phase 2 — `'apidiff'` joins for the Go adapter, by the
+ * same logic. apidiff (golang.org/x/exp/cmd/apidiff) is the canonical
+ * Go API-diff tool and the gold standard for the language. Scoring math
+ * is identical to `'dts'`/`'griffe'`. The Go adapter emits this tier
+ * when the sandbox image is built; otherwise it honest-falls-back to
+ * `'ast-only'` + a clear reason in unanalyzableSymbols.
  */
-export const AnalysisTierSchema = z.enum(['dts', 'griffe', 'api-extractor', 'ast-only'])
+export const AnalysisTierSchema = z.enum(['dts', 'griffe', 'apidiff', 'api-extractor', 'ast-only'])
 export type AnalysisTier = z.infer<typeof AnalysisTierSchema>
 
 export const SignatureChangeSchema = z.object({

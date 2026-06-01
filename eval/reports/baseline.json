@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-01T17:58:01.881Z",
+  "generatedAt": "2026-06-01T18:19:34.353Z",
   "release": {
     "label": "local",
-    "gitCommit": "42f90971bfa5bacb362b7cd167d7688ee7475b32"
+    "gitCommit": "2219c0dd731d3c496916f8021739d92a6dc66185"
   },
   "totals": {
-    "fixtures": 10,
-    "passed": 10,
+    "fixtures": 11,
+    "passed": 11,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -19,7 +19,7 @@
     },
     "medium": {
       "high": 0,
-      "medium": 4,
+      "medium": 5,
       "low": 0
     },
     "low": {
@@ -74,6 +74,30 @@
       "perSymbol": [
         {
           "symbol": "oldMethod",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "go-httprouter-1-to-1-3",
+      "packageName": "github.com/julienschmidt/httprouter",
+      "fromVersion": "v1.0.0",
+      "toVersion": "v1.3.0",
+      "observedBucket": "medium",
+      "observedOverall": 75,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 60,
+      "expectedOverallMax": 79,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "Router.NotFound",
           "expected": true,
           "observed": true,
           "hit": true

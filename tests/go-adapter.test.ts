@@ -182,20 +182,31 @@ describe('goAdapter.detect', () => {
 
 describe('goAdapter.semanticDiff — honest fallback', () => {
   it('returns analyzable-but-empty diff naming the gap (NEVER fabricates)', async () => {
-    // F23b sub-phase 1: the Go sandbox image isn't built (Dockerfile
-    // doesn't exist yet). semanticDiff hits the goImageExists=false
-    // branch and returns the honest stub. Sub-phase 2 will land the
-    // image + real apidiff invocation; this test then graduates to the
-    // §11b.1 real-container test class.
-    const diff = await goAdapter.semanticDiff('github.com/foo/bar', 'v1.0.0', 'v2.0.0')
+    // F23b sub-phase 2: the Go sandbox image MAY be built on the dev
+    // box (from a prior §11b.1 test run). We use an intentionally-
+    // unresolvable module path so the test is deterministic whether
+    // or not the image is built: if the image is absent we hit
+    // goImageExists=false → "not built" fallback; if the image is
+    // present we hit the `go get` failure path → "apidiff failed"
+    // fallback. Both branches produce the honest shape below. The
+    // §11b.1 test in tests/go-apidiff-container.test.ts asserts the
+    // happy path against live Docker; this unit test pins the
+    // fallback contract.
+    const diff = await goAdapter.semanticDiff(
+      'example.com/mendel/test/nonexistent-please-fail',
+      'v1.0.0',
+      'v2.0.0',
+    )
     expect(diff.removedExports).toEqual([])
     expect(diff.signatureChanges).toEqual([])
     expect(diff.newDeprecations).toEqual([])
     expect(diff.coveragePercent).toBe(0)
     expect(diff.analysisTier).toBe('ast-only')
     expect(diff.unanalyzableSymbols).toHaveLength(1)
-    expect(diff.unanalyzableSymbols[0].reason).toMatch(/(not built|apidiff)/i)
-  })
+    expect(diff.unanalyzableSymbols[0].reason).toMatch(
+      /(not built|apidiff could not analyze)/i,
+    )
+  }, 60_000) // Docker go-get round-trip = up to ~30s on cold cache
 })
 
 // ── Adapter contract pins ─────────────────────────────────────────────────────

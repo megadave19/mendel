@@ -54,10 +54,11 @@ export const AnalysisCoverageSchema = z.object({
   symbolsAnalyzed: z.number().int().min(0),
   symbolsTotal: z.number().int().min(0),
   percentCovered: z.number().min(0).max(100),
-  // v2.2 / F23a — `'griffe'` is honest tier for Python (peer of 'dts').
+  // v2.2 / F23a + F23b — `'griffe'` (Python) and `'apidiff'` (Go) are
+  // honest tier names for their respective adapters; both peers of 'dts'.
   // Kept here in lockstep with AnalysisTierSchema in signals/semantic-diff.ts.
   // `'none'` is this enum's own extra — fires when no diff ran at all.
-  analysisTier: z.enum(['dts', 'griffe', 'api-extractor', 'ast-only', 'none']),
+  analysisTier: z.enum(['dts', 'griffe', 'apidiff', 'api-extractor', 'ast-only', 'none']),
   notAnalyzed: z.array(z.object({ symbol: z.string(), reason: z.string() })),
 })
 export type AnalysisCoverage = z.infer<typeof AnalysisCoverageSchema>

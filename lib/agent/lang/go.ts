@@ -333,12 +333,12 @@ async function semanticDiff(
       // apidiff walks the entire public API surface, exhaustive within scope.
       coveragePercent: 100,
       unanalyzableSymbols: out.unanalyzableSymbols,
-      // 'ast-only' for now — sub-phase 2 will land a tier enum extension
-      // for 'apidiff' (mirroring the F23a sub-gate's 'griffe' addition).
-      // The 'ast-only' value is HONEST — the live output goes through the
-      // same fallback shape until the enum widening commit ships, so we
-      // never claim a stronger tier than the schema declares.
-      analysisTier: 'ast-only',
+      // v2.2 / F23b sub-phase 2 — schema gained `'apidiff'` as a peer of
+      // `'dts'`/`'griffe'`. Same lockstep rule as F23a: scoring math is
+      // identical to other declaration-walking analyzers; the distinct
+      // value exists so the UI + PR body name the analyzer that actually
+      // ran. CLAUDE.md §5b.
+      analysisTier: 'apidiff',
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
