@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-01T10:37:16.584Z",
+  "generatedAt": "2026-06-01T17:58:01.881Z",
   "release": {
-    "label": "v2.2-with-griffe",
-    "gitCommit": "3611c8e5212bafabcbea6ea1efacaea66364ab6e"
+    "label": "local",
+    "gitCommit": "42f90971bfa5bacb362b7cd167d7688ee7475b32"
   },
   "totals": {
-    "fixtures": 9,
-    "passed": 9,
+    "fixtures": 10,
+    "passed": 10,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -19,7 +19,7 @@
     },
     "medium": {
       "high": 0,
-      "medium": 3,
+      "medium": 4,
       "low": 0
     },
     "low": {
@@ -56,7 +56,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 7,
+      "durationMs": 8,
       "failures": []
     },
     {
@@ -74,6 +74,30 @@
       "perSymbol": [
         {
           "symbol": "oldMethod",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "go-singlesignal-changelog",
+      "packageName": "github.com/example/widget",
+      "fromVersion": "v1.0.0",
+      "toVersion": "v2.0.0",
+      "observedBucket": "medium",
+      "observedOverall": 60,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 60,
+      "expectedOverallMax": 65,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "Widget.Render",
           "expected": true,
           "observed": true,
           "hit": true

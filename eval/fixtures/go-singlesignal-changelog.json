@@ -1,0 +1,29 @@
+{
+  "id": "go-singlesignal-changelog",
+  "packageName": "github.com/example/widget",
+  "fromVersion": "v1.0.0",
+  "toVersion": "v2.0.0",
+  "description": "v2.2 / F23b sub-phase 1: changelog signal flagged a breaking change but apidiff is unavailable (semanticDiff=null) — Go sandbox image isn't built yet. Per TRD §9.5 singleSignalOnly → mid-band score ~60. Bucket lands medium. Pins honest single-signal behavior for Go pending sub-phase 2.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "go"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "Widget.Render",
+        "changeType": "removed",
+        "description": "Widget.Render was removed in v2 — use Widget.Draw instead.",
+        "sourceUrl": "https://github.com/example/widget/releases/tag/v2.0.0"
+      }
+    ],
+    "semanticDiff": null,
+    "patchedFilePaths": ["go.mod", "internal/ui/widget.go"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 60, "max": 65 },
+    "perSymbolHits": [
+      { "symbol": "Widget.Render", "shouldDetect": true }
+    ]
+  }
+}

@@ -1,11 +1,11 @@
-# Mendel Calibration Report — `v2.2-with-griffe`
+# Mendel Calibration Report — `local`
 
-Generated: 2026-06-01T10:37:16.584Z · commit `3611c8e5212b`
+Generated: 2026-06-01T17:58:01.881Z · commit `42f90971bfa5`
 
 ## Headline
 
-- **Fixtures:** 9
-- **Passed:** 9 / 9 (100%)
+- **Fixtures:** 10
+- **Passed:** 10 / 10 (100%)
 - **Bucket accuracy:** 100%
 - **Overall-in-range:** 100%
 
@@ -14,15 +14,16 @@ Generated: 2026-06-01T10:37:16.584Z · commit `3611c8e5212b`
 | expected ↓ / observed → | high | medium | low |
 | --- | --- | --- | --- |
 | **high** | 3 | 0 | 0 |
-| **medium** | 0 | 3 | 0 |
+| **medium** | 0 | 4 | 0 |
 | **low** | 0 | 0 | 3 |
 
 ## Per-fixture
 
 | status | id | package | bucket | overall | duration |
 | --- | --- | --- | --- | --- | --- |
-| ✓ | `axios-0.24-to-0.27` | axios 0.24.0→0.27.2 | high | 90 | 7ms |
+| ✓ | `axios-0.24-to-0.27` | axios 0.24.0→0.27.2 | high | 90 | 8ms |
 | ✓ | `changelog-only-high-coverage` | synthetic-changelog-only 5.0.0→6.0.0 | low | 48 | 0ms |
+| ✓ | `go-singlesignal-changelog` | github.com/example/widget v1.0.0→v2.0.0 | medium | 60 | 0ms |
 | ✓ | `monorepo-cross-package-bump` | @scope/ui 3.0.0→4.0.0 | high | 90 | 0ms |
 | ✓ | `python-cachetools-4-to-5` | cachetools 4.2.4→5.3.0 | medium | 74 | 0ms |
 | ✓ | `semantic-only-undocumented` | synthetic-semantic-only 3.0.0→4.0.0 | medium | 70 | 0ms |

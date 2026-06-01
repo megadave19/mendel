@@ -113,8 +113,15 @@ describe('typescriptAdapter contract', () => {
 })
 
 describe('registeredAdapters', () => {
-  it('exposes the registered list (v2.2.x ships TS + Python)', () => {
+  it("exposes the registered list (v2.2.x ships Go + Python + TS — Rust is F23c)", () => {
     const ids = registeredAdapters().map((a) => a.id)
-    expect(ids).toEqual(['python', 'typescript'])
+    expect(ids).toEqual(['go', 'python', 'typescript'])
+  })
+
+  it("routes a Go repo (go.mod present) to the Go adapter", () => {
+    // F23b sub-phase 1: detection + go.mod parsing land here; semanticDiff
+    // honest-falls-back until sub-phase 2 wires apidiff in Docker.
+    file('go.mod', 'module example.com/x\n\ngo 1.21\n')
+    expect(selectAdapter(repo)?.id).toBe('go')
   })
 })

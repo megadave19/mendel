@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23a **engineering complete**: schema extended with honest `'griffe'` tier, runner fully routed via `LanguageAdapter` (`preflight()` + `detectStaleDeps` + `semanticDiff`), `Issue.language` populated, **language-aware `maxBucket` clamp** in scorer per §5b v2 r1. Next: end-to-end Python scan on a real public repo for the §F23 sub-gate Loom → **F23b Go**.
+> **Current phase:** **v2.2 IN PROGRESS** — F23b **sub-phase 1 complete** (Go: detection + go.mod parser + proxy.golang.org staleness + honest semanticDiff stub + bench fixture + 21-test unit suite). Bench at 10/10 100%/100% (new baseline). F23a engineering complete; F23b sub-phase 2 (apidiff in Docker + §11b.1) next. Last commit `42f9097` (F23a sub-gate closeout); F23b sub-phase 1 commit follows.
 
 ---
 
@@ -109,6 +109,31 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23b sub-phase 1 — Go adapter foundation: detection + go.mod + proxy.golang.org + honest stub)**
+First sub-phase of F23b. Mirrors F23a sub-phase 1's shape exactly. Mendel can now REGISTER a Go repo without silently defaulting to TS (the §5b honesty rule for language selection extended to Go). Stale-deps work end-to-end against proxy.golang.org; semantic-diff is an HONEST stub pending the apidiff Docker integration (V2_PLAN.md §F23b sub-phase 2). The sub-phase 1 + 2 split is identical to F23a's foundation/integration split — same incremental discipline, same §11b.1 gate at sub-phase 2.
+- **`lib/agent/lang/go.ts`** (new) — detection on `go.mod` (the binding indicator; `go.sum`/`go.work` alone don't qualify; `go.work` is workspace-tracked separately).
+  - **`go.mod` parser** (`parseGoMod`) — handles single-line `require`, block `require ( … )`, the `// indirect` annotation (EXCLUDED from direct requires, surfaced honestly in `indirectRequires` — same §5b shape Python uses for dev-deps), `module`/`go`/`toolchain` directives, and `replace`/`exclude`/`retract` blocks (surfaced as `unparsedSections` — Mendel doesn't act on them yet but never silently drops). End-of-line comments stripped EXCEPT `// indirect`, which is preserved as a semantic marker.
+  - **`encodeGoModulePath`** — per the Go modules spec, uppercase letters in a module path become `!<lower>` before the proxy. Without this, capital-case modules (e.g. `github.com/Foo/Bar`) get 404s.
+  - **`lookupLatestGoVersion`** — proxy.golang.org `/<module>/@latest` returns `{Version, Time}`. Discriminated `LatestLookup` ({ok:true, version} | {ok:false, reason}) so a 404/5xx/network error NEVER silently maps to "not stale" (same shape detect.ts + python.ts ship; rate-limit honesty lesson transfers verbatim).
+  - **`semanticDiff`** — honest fallback (`coveragePercent=0`, `analysisTier='ast-only'`, single `unanalyzableSymbols` entry naming the gap). Sub-phase 2 will land the real apidiff invocation; the schema extension for an `'apidiff'` enum value will land alongside it (mirroring the F23a `'griffe'` extension pattern).
+  - **`preflight`** — `ensureGoSandboxImage` is called; the build fails cleanly today because `docker/go-sandbox.Dockerfile` doesn't exist. The runner's pre-flight honest path surfaces that to the user with a pointer to sub-phase 2. This is the §5b experience we want for "engineering not yet shipped."
+  - **`maxBucket: 'high'`** — apidiff is the gold standard for Go API diff per V2_PLAN.md §F23 ceiling table. Until sub-phase 2 the per-symbol scoring rules (singleSignalOnly / changelogOnlyHighCoverage) cap confidence honestly because semantic-diff returns 0% coverage.
+- **`lib/sandbox/go-executor.ts`** (new) — `goImageExists`, `ensureGoSandboxImage`, `runApidiff`. Image tag `mendel-go-sandbox:v2.2` reserved. Uses `execFile` everywhere (no shell — CLAUDE.md §5 rule 18). Sub-phase 1 path: `runApidiff` throws cleanly with the "image not built — sub-phase 2 will land it" message; adapter catches → fallback. Network mode reserved as `--network=bridge` for the future apidiff run; the polyglot iptables allowlist parity is tracked as a v2.2.x follow-on.
+- **`lib/agent/lang/registry.ts`** — `goAdapter` registered AHEAD of Python + TS. Ordering vs Python is arbitrary today (marker files are disjoint — no real-world Go repo has a pyproject.toml at the root). Comment block updated for the new priority chain. (Future) Rust slot reserved for F23c.
+- **`eval/fixtures/go-singlesignal-changelog.json`** (new) — TRD §9.5 `singleSignalOnly` case (changelog flagged, semanticDiff=null). Bucket lands medium ~60–65. Pins honest single-signal Go behavior pending sub-phase 2. A sibling `go-both-agree-apidiff` fixture will land with sub-phase 2 to pin the apidiff-confirmed case.
+- **`tests/go-adapter.test.ts`** (new) — 21 tests covering:
+  - parseGoMod: module directive, single-line require, block require, `// indirect` exclusion + surfacing, replace/exclude/retract surfacing, `go`/`toolchain` ignored, end-of-line comments
+  - encodeGoModulePath: uppercase escape (3 cases)
+  - lookupLatestGoVersion: ok / 410 / missing-Version / network-error branches via injected fetch — all four honesty-discriminated cases pinned
+  - goAdapter.detect: go.mod binding indicator, go.sum-alone NO, go.work-alone NO, polyglot indicators
+  - goAdapter.semanticDiff honest fallback shape
+  - Contract pins: id, manifestFile, maxBucket, preflight presence
+- **`tests/lang-adapter.test.ts`** — updated `registeredAdapters` assertion (`['go', 'python', 'typescript']`); added Go routing test (a `go.mod`-only repo selects the Go adapter).
+- **§11b.1 honored from day one:** the §11b.1 real-container test for Go lands with sub-phase 2 alongside the real Dockerfile (`tests/go-apidiff-container.test.ts`). Sub-phase 1 deliberately scopes to pure modules + injected-fetch tests so it's mergeable + reviewable on its own; the Docker layer comes with a §11b.1 test that runs in the same commit, mirroring F23a sub-phase 2's discipline.
+- **Bug caught + fixed before merge:** `// indirect` annotation was being stripped from BLOCK require items (the regex didn't see it), so every indirect dep slipped into `requires` rather than `indirectRequires`. Unit test `parseGoMod > EXCLUDES // indirect requires` caught it immediately. Fix: preserve `// indirect` everywhere (it's a semantic marker, not a comment).
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **508 passed** / 16 skipped (+22 new) · `pnpm eval` ✅ **10/10 100%/100%** vs. new baseline (re-seeded as the v2.2 F23b sub-phase 1 honesty anchor) · `pnpm test:docker` ✅ **11/11** (no Go container tests yet — sub-phase 2).
+- **Next:** F23b sub-phase 2 — `docker/go-sandbox.Dockerfile` + apidiff wrapper script + real `runApidiff` + schema extension with `'apidiff'` tier + `tests/go-apidiff-container.test.ts` (§11b.1). Mirrors the F23a griffe Docker integration commit verbatim.
 
 **2026-06-01 (v2.2 / F23a — sub-gate engineering closeout: honest `'griffe'` tier, runner fully routed via adapter, language-aware ceiling)**
 Closes the four items V2_PLAN.md §F23a flagged as "deferred to sub-gate" once griffe was shelling cleanly. After this commit a Python scan calls *only* through the `LanguageAdapter` interface — the runner has zero direct imports of TS-specific or Python-specific pipeline functions. Same byte-identical behavior on TS (eval bench unchanged at 9/9 100%/100%), now polyglot-correct.

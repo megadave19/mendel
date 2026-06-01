@@ -21,6 +21,7 @@
 
 import { typescriptAdapter } from './typescript'
 import { pythonAdapter } from './python'
+import { goAdapter } from './go'
 import type { LanguageAdapter } from './types'
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -35,9 +36,16 @@ import type { LanguageAdapter } from './types'
 // `semanticDiff` is honestly degraded until v2.2.x wires griffe via
 // Docker (per V2_PLAN.md §F23a's incremental rule); detection +
 // stale-deps DO work today against real Python repos.
-// (Future) const GO_ADAPTER   = ... (F23b)
+// v2.2 / F23b — Go adapter registered AHEAD of TypeScript so a polyglot
+// repo with both go.mod AND package.json routes to Go. Sub-phase 1: the
+// adapter's `semanticDiff` honest-falls-back (apidiff Docker integration
+// is sub-phase 2 per V2_PLAN.md's incremental rule); detection +
+// stale-deps via proxy.golang.org DO work today against real Go repos.
+// Ordering vs Python is arbitrary today (marker files are disjoint —
+// no real-world Go repo has a pyproject.toml at the root).
 // (Future) const RUST_ADAPTER = ... (F23c)
 const REGISTERED: ReadonlyArray<LanguageAdapter> = [
+  goAdapter,
   pythonAdapter,
   typescriptAdapter,
 ]
