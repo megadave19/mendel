@@ -20,6 +20,7 @@
  */
 
 import { typescriptAdapter } from './typescript'
+import { pythonAdapter } from './python'
 import type { LanguageAdapter } from './types'
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -27,10 +28,17 @@ import type { LanguageAdapter } from './types'
 // Order matters: highest priority first. Adapters added in F23a/b/c slot in
 // ahead of TypeScript so a polyglot repo's more-specific language wins.
 //
-// (Future) const PYTHON_ADAPTER = ... (F23a)
-// (Future) const GO_ADAPTER     = ... (F23b)
-// (Future) const RUST_ADAPTER   = ... (F23c)
+// v2.2 / F23a — Python adapter registered AHEAD of TypeScript so a
+// polyglot repo with both pyproject.toml AND package.json routes to
+// Python (the user's intent for a polyglot repo is almost always "the
+// more specific language is primary"). The Python adapter's
+// `semanticDiff` is honestly degraded until v2.2.x wires griffe via
+// Docker (per V2_PLAN.md §F23a's incremental rule); detection +
+// stale-deps DO work today against real Python repos.
+// (Future) const GO_ADAPTER   = ... (F23b)
+// (Future) const RUST_ADAPTER = ... (F23c)
 const REGISTERED: ReadonlyArray<LanguageAdapter> = [
+  pythonAdapter,
   typescriptAdapter,
 ]
 

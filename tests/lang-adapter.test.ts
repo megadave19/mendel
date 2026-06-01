@@ -72,13 +72,23 @@ describe('selectAdapter', () => {
     expect(a?.id).toBe('typescript')
   })
 
-  it('returns NULL for a Python-only repo (NEVER silently defaults to TS — §5b)', () => {
-    // Once F23a lands, this test should flip to expect the Python adapter.
-    // The current null-return is what the runner reads to surface an
-    // honest "no analyzer for this repo type" message.
+  it('returns the Python adapter for a Python-only repo (F23a landed)', () => {
+    // F23 core (v2.2.0) returned null here — F23a (v2.2.x) registered the
+    // Python adapter ahead of TypeScript. This test flipped to assert the
+    // honest, capability-aware return.
     file('pyproject.toml', '[project]\nname = "x"\n')
     file('src/x.py', 'print(1)\n')
-    expect(selectAdapter(repo)).toBeNull()
+    const a = selectAdapter(repo)
+    expect(a).not.toBeNull()
+    expect(a?.id).toBe('python')
+  })
+
+  it('routes a polyglot repo (Python + JS) to Python — more-specific wins', () => {
+    // V2_PLAN §F23 registry priority: Python before TypeScript so a repo
+    // with BOTH manifests routes to Python.
+    file('pyproject.toml', '[project]\nname = "x"\n')
+    file('package.json', JSON.stringify({ name: 'tooling' }))
+    expect(selectAdapter(repo)?.id).toBe('python')
   })
 
   it('returns null for an empty repo (no manifest at all)', () => {
@@ -103,8 +113,8 @@ describe('typescriptAdapter contract', () => {
 })
 
 describe('registeredAdapters', () => {
-  it('exposes the registered list (v2.2.0 ships TS only)', () => {
+  it('exposes the registered list (v2.2.x ships TS + Python)', () => {
     const ids = registeredAdapters().map((a) => a.id)
-    expect(ids).toEqual(['typescript'])
+    expect(ids).toEqual(['python', 'typescript'])
   })
 })

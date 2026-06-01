@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23 core (LanguageAdapter abstraction + TS adapter + registry) landed. Next sub-phases: **F23a Python → F23b Go → F23c Rust** per V2_PLAN §F23.
+> **Current phase:** **v2.2 IN PROGRESS** — F23 core + F23a Python foundation (detection + manifest parsing + PyPI stale-deps) landed; semantic-diff is honestly-degraded stub pending griffe Docker integration. Next: griffe sandbox image + §11b.1 + F23a sub-gate.
 
 ---
 
@@ -109,6 +109,26 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23a — Python adapter foundation: detection + manifest parsing + PyPI staleness)**
+First sub-phase of F23. Mendel can now REGISTER a Python repo without silently defaulting to TS (the §5b honesty rule applied to language selection). Stale-deps work end-to-end against PyPI; semantic-diff is an HONEST stub pending the griffe Docker integration (V2_PLAN.md §F23a's incremental rule — F23a's sub-gate isn't claimed yet).
+- **`lib/agent/lang/python.ts`** (new) — detection across `pyproject.toml` / `setup.py` / `Pipfile` / `requirements.txt`. Three inline parsers (no new deps):
+  - `parseRequirementsTxt` — strips comments, env markers (`;`), include/`-e` lines, package extras
+  - `parsePyprojectToml` — handles BOTH PEP 621 (`[project].dependencies` array) AND Poetry (`[tool.poetry.dependencies]` table, incl. inline-table `version` extraction). Dev-deps sections (`[tool.poetry.dev-dependencies]`) are SURFACED in `unparsedSections` — never silently dropped (§5b). Filters out the `python = "..."` interpreter constraint.
+  - `parsePipfile` — `[packages]` table only; `[dev-packages]` intentionally excluded
+  - `setup.py` is DETECTED but NOT parsed (executable Python — out of scope). Logged honestly so the user knows that path wasn't analyzed.
+- PyPI stale-deps: `getLatestPyPiVersion` via the public JSON API with retry-on-429/5xx + UA header. Discriminated `{ok:true; version} | {ok:false}` shape so failed lookups never silently map to "not stale" (same honesty pattern as the npm path).
+- **Honest stub `semanticDiff`** — returns analyzable-but-empty SemanticDiff with `coveragePercent: 0` + a single `unanalyzableSymbols` entry naming the gap (`"griffe Docker integration pending — V2_PLAN.md §F23a follow-on. Confidence is capped accordingly."`). Routes per-symbol scoring through the single-signal column, so confidence honestly caps low/medium until griffe is wired. NEVER fabricates findings.
+- **Registry priority** — Python registered AHEAD of TypeScript so a polyglot repo (Python + JS) routes to Python (the more-specific language). Test `tests/lang-adapter.test.ts` pins this.
+- **+23 unit tests** for the Python adapter (`tests/python-adapter.test.ts`): manifest parser exhaustiveness across each format + edge cases (extras, env markers, inline-tables, dev-deps separation, interpreter-skip), detection across 4 manifest formats, contract pins on `maxBucket`/`sandboxImage`/`manifestFile`, the honest semantic-diff stub.
+- **Caught + fixed during writing**: a regex `$`-anchor bug in `parseRequirementsTxt` that silently dropped env-marker'd lines. The test caught it — exactly the §5b "never silently drop" gap that test-first writing exists to surface.
+- **Deferred to the griffe Docker session** (next, this is F23a's sub-gate work per V2_PLAN.md):
+  - Build `docker/python-sandbox.Dockerfile` (`python:3.13-slim` + `griffe` + `pip`)
+  - Tag `mendel-python-sandbox:v2.2`
+  - §11b.1 real-container egress test for the Python image (per CLAUDE.md §11b.1 toolchain-completeness rule)
+  - Implement real `pythonAdapter.semanticDiff` shelling to `griffe check`
+  - Add bench fixtures for a known Python pair (e.g. flask 2 → 3)
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **479 passed** (was 455, +24) / 13 skipped. `pnpm eval` ✅ no regression vs. v2.1 baseline.
 
 **2026-06-01 (v2.2 / F23 core — LanguageAdapter abstraction + TS adapter + registry)**
 v1.x/v2.0/v2.1 had TypeScript baked into the runner. F23 core extracts a seam so Python/Go/Rust can plug in independently (V2_PLAN.md §F23 sub-phase order). This commit is the FOUNDATION — no behavior change for existing TS scans, no Python/Go/Rust support yet, no runner-wide refactor. Just the seam, ready for F23a Python.
