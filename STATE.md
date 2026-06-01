@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.3 IN PROGRESS** — F24 **sub-phase 2 complete**: runner-glue + GitHub merge API + cancelable dwell window + AgentLog persistence + runner wiring after every PR submission. Default-OFF schema means every existing scan path skips honestly with §5c r1 (bench unchanged at 14/14 100/100). Sub-phase 3 next (Settings UI for opt-in). Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` (F24 s1) → `<F24 s2>`.
+> **Current phase:** **v2.3 IN PROGRESS** — **F24 sub-phase 3 complete: F24 done end-to-end.** Settings UI panel for per-repo opt-in (`AutoMergePanel`) + REST endpoints (`/api/repo-settings/[repoFullName]` GET/PUT, `/api/agent-log` GET) + required acknowledgement copy + recent §5c decisions viewer. Wired both endpoints against live SQLite + verified round-trip. Default-OFF schema means every existing scan path still skips honestly with §5c r1; bench unchanged at 14/14 100/100. **F24 auto-merge is complete; F25 monitor cron next.** Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` (F24 s2) → `<F24 s3>`.
 
 ---
 
@@ -109,6 +109,24 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.3 / F24 sub-phase 3 — Settings UI + REST endpoints for opt-in; F24 auto-merge COMPLETE)**
+Closes F24 end-to-end. Mendel now has a full surface for the §5c auto-merge feature: REST endpoints to read + write `RepoSetting`, a Settings panel for per-repo opt-in with required acknowledgement copy, and a recent-decisions viewer that pulls from `AgentLog`. Default-OFF at the schema level continues to be the only setting that matters — until the user explicitly types a repo name, ticks the acknowledgement, and clicks Save, the gate is dormant.
+- **`app/api/repo-settings/[repoFullName]/route.ts`** (new) — GET returns the stored row OR the schema defaults + `exists: false` on a missing row (UI doesn't have to distinguish "never configured" from "explicitly off"). PUT upserts with Zod-validated body (floor 0–100; dwell 0–86400). Path segment is URL-decoded + re-validated against the GitHub-safe `owner/name` regex. Rate-limited: GET 60/min ('api' bucket), PUT 10/min ('newScan' bucket).
+- **`app/api/agent-log/route.ts`** (new) — GET filtered by `scanId` / `issueId` / `kind` (prefix match via Prisma `startsWith`). Capped at 100 rows/req. Zod-validated; malformed payloads surface as `__parseError` instead of crashing the renderer (honest-degradation contract).
+- **`components/automerge/AutoMergePanel.tsx`** (new) — single panel rendered inside S9 (Settings). Honest copy first ("Auto-merge fires only when ALL of these hold (CLAUDE.md §5c)") with a bulleted list of every rule including the Rust-ceiling carve-out + the dwell/irreversibility warning. Repo picker (manual entry — never enumerated without the user's input). After Load: master toggle + floor slider (UI range 70–100; policy hard-clamps further server-side) + dwell input + REQUIRED acknowledgement checkbox that gates Save when enabling. Recent §5c decisions for the loaded repo rendered below with one-line summaries via the pure `summarisePayload` helper.
+- **`app/(app)/settings/page.tsx`** — added `<AutoMergePanel />` to the right-column stack, after Sandbox Network Allowlist. No other settings changed.
+- **Pure helpers extracted from the panel for testability:**
+  - `clampDwellInUI(seconds)` — UI-side mirror of the server clamp; rounds fractional input, refuses NaN/negative, caps at 3600s (UI ceiling tighter than the 24h server cap)
+  - `summarisePayload({ kind, payload })` — formats each `automerge.*` kind into one human-readable line; falls back to a JSON snippet on unknown kinds so a future event type is surfaced honestly, not silently dropped
+- **Tests (+30 new):**
+  - **`tests/automerge-panel.test.ts`** (14): clamp boundaries (NaN, neg, frac, UI cap); summary for every known `automerge.*` kind (verdict pass/block including singular/plural reason copy; dwell start/complete; merge ok/fail) + unknown-kind fallback + null-payload case
+  - **`tests/repo-settings-route.test.ts`** (9): GET defaults on missing row; GET on stored row; 400 on malformed repoFullName + 400 on non-decodable %; PUT happy path with upsert assertion; PUT 400 on floor>100 / dwell>86400 / missing field; PUT 400 on bad path (validation runs BEFORE Prisma)
+  - **`tests/agent-log-route.test.ts`** (7): default limit 50; explicit limit honored; limit>100 → 400; kind prefix forwarded as Prisma `startsWith`; bad-char kind → 400; malformed payload surfaces as `__parseError`; scanId + issueId + kind composable
+- **Live verification:** dev server smoke tests both endpoints. GET on a missing row returns `{exists:false}` + defaults; PUT round-trips a real save (floor 92, dwell 45 → readback matches); reset the row back to defaults to keep dev DB clean.
+- Verification (all six surfaces): typecheck ✅ · lint ✅ (caught + fixed an unescaped-entity error in the panel) · `pnpm test` ✅ **612 passed** / 22 skipped (+30 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** · `pnpm test:docker` not re-run (no Docker change).
+- **F24 status: DONE.** Pure policy (s1) + runner-glue + GitHub merge + dwell + AgentLog (s2) + Settings UI + REST endpoints + Recent-decisions viewer (s3). The §5c "Honesty-of-Action floor" is now a complete user-facing feature.
+- **Next:** F25 continuous monitor — `worker/monitor.ts` via node-cron; reuses the existing PR-state poller; `pnpm monitor` script. Then F26 MCP server.
 
 **2026-06-01 (v2.3 / F24 sub-phase 2 — runner-glue + GitHub merge API + dwell window + AgentLog; auto-merge now fires end-to-end)**
 Closes the gap left by sub-phase 1. Mendel now actually CALLS the merge API after the §5c envelope passes — under a cancelable dwell window, with every step logged to AgentLog. Default-OFF at the schema level means every existing scan path skips honestly with §5c r1 (bench unchanged at 14/14 100/100).

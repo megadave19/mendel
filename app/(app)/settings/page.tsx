@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { PanelFrame } from '@/components/phase-d/PanelFrame'
+import { AutoMergePanel } from '@/components/automerge/AutoMergePanel'
 import { useToast } from '@/components/shared/toast'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { TIER_1_HOSTS, Tier2HostSchema } from '@/lib/sandbox/iptables-allowlist'
@@ -439,6 +440,12 @@ export default function SettingsPage() {
               onRemove={handleRemoveTier2}
             />
           </PanelFrame>
+
+          {/* v2.3 / F24 sub-phase 3 — Auto-merge opt-in (the §5c
+              "Honesty-of-Action floor" UI). Per-repo config + recent
+              decisions feed. Default OFF at the schema level; this
+              panel is the ONLY way a user can opt in. */}
+          <AutoMergePanel />
         </section>
       </div>
     </div>
