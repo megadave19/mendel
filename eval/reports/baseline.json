@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-06-01T09:01:45.301Z",
+  "generatedAt": "2026-06-01T10:37:16.584Z",
   "release": {
-    "label": "v2.1-with-monorepo-fixture",
-    "gitCommit": "5ce61a11d610363e25e1bd8cb62b9f5879f2b6ad"
+    "label": "v2.2-with-griffe",
+    "gitCommit": "3611c8e5212bafabcbea6ea1efacaea66364ab6e"
   },
   "totals": {
-    "fixtures": 8,
-    "passed": 8,
+    "fixtures": 9,
+    "passed": 9,
     "failed": 0,
     "bucketAccuracyPercent": 100,
     "overallInRangePercent": 100
@@ -19,7 +19,7 @@
     },
     "medium": {
       "high": 0,
-      "medium": 2,
+      "medium": 3,
       "low": 0
     },
     "low": {
@@ -56,7 +56,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 8,
+      "durationMs": 7,
       "failures": []
     },
     {
@@ -98,6 +98,36 @@
       "perSymbol": [
         {
           "symbol": "Drawer",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        }
+      ],
+      "passed": true,
+      "durationMs": 0,
+      "failures": []
+    },
+    {
+      "id": "python-cachetools-4-to-5",
+      "packageName": "cachetools",
+      "fromVersion": "4.2.4",
+      "toVersion": "5.3.0",
+      "observedBucket": "medium",
+      "observedOverall": 74,
+      "expectedBucket": "medium",
+      "expectedOverallMin": 60,
+      "expectedOverallMax": 79,
+      "bucketMatch": true,
+      "overallInRange": true,
+      "perSymbol": [
+        {
+          "symbol": "cachetools.cache",
+          "expected": true,
+          "observed": true,
+          "hit": true
+        },
+        {
+          "symbol": "cachetools.lru",
           "expected": true,
           "observed": true,
           "hit": true
@@ -182,7 +212,7 @@
         }
       ],
       "passed": true,
-      "durationMs": 1,
+      "durationMs": 0,
       "failures": []
     },
     {

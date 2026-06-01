@@ -178,10 +178,15 @@ describe('pythonAdapter.detect', () => {
   })
 })
 
-// ── pythonAdapter.semanticDiff — the honest stub ──────────────────────────────
+// ── pythonAdapter.semanticDiff — falls back honestly when image missing ───────
 
-describe('pythonAdapter.semanticDiff — honest stub until griffe lands', () => {
-  it("returns analyzable-but-empty diff with a CLEAR reason (NEVER fabricates)", async () => {
+describe('pythonAdapter.semanticDiff — honest fallback', () => {
+  it("returns analyzable-but-empty diff naming the missing image (NEVER fabricates)", async () => {
+    // The Python sandbox image is built by `preflightPythonSandbox` the
+    // first time a Python scan runs. In the unit-test environment the
+    // image is NOT built, so semanticDiff hits the honest-fallback path.
+    // §11b.1 real-container test in tests/python-griffe-container.test.ts
+    // covers the happy path against actual Docker.
     const diff = await pythonAdapter.semanticDiff('requests', '2.31.0', '3.0.0')
     expect(diff.removedExports).toEqual([])
     expect(diff.signatureChanges).toEqual([])
@@ -189,7 +194,10 @@ describe('pythonAdapter.semanticDiff — honest stub until griffe lands', () => 
     expect(diff.coveragePercent).toBe(0)
     expect(diff.analysisTier).toBe('ast-only')
     expect(diff.unanalyzableSymbols).toHaveLength(1)
-    expect(diff.unanalyzableSymbols[0].reason).toMatch(/griffe.*pending/i)
+    // Reason names either "image is not built" (unit-test env) OR
+    // "griffe could not analyze …" (image exists but griffe failed on
+    // this pair). Both are honest.
+    expect(diff.unanalyzableSymbols[0].reason).toMatch(/(not built|griffe could not analyze)/i)
   })
 })
 

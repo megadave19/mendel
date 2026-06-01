@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-01
-> **Current phase:** **v2.2 IN PROGRESS** — F23 core + F23a Python foundation (detection + manifest parsing + PyPI stale-deps) landed; semantic-diff is honestly-degraded stub pending griffe Docker integration. Next: griffe sandbox image + §11b.1 + F23a sub-gate.
+> **Current phase:** **v2.2 IN PROGRESS** — F23 core + F23a complete (Python: detection + PyPI + griffe semantic-diff via Docker + §11b.1 + bench fixture). Next: F23a sub-gate (end-to-end Python scan on a real public repo) → **F23b Go**.
 
 ---
 
@@ -109,6 +109,27 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-01 (v2.2 / F23a — griffe Docker integration: Python semantic-diff is REAL)**
+Closes the F23a stub gap left by the previous commit. Mendel now runs a real `griffe check`-style API diff for Python packages inside a dedicated Docker sandbox image, returning a normalized `SemanticDiff` that flows through the language-agnostic scorer.
+- **`docker/python-sandbox.Dockerfile`** (new) — `python:3.13-slim` + git + build-essential (for C-extension targets) + `griffe~=1.5` (major-pinned, V2_PLAN.md §F23a "real shell-invokable tools"). Non-root `mendel` user (CLAUDE.md §5 rule 11). The analysis script is COPYed onto `PATH` so the runtime user can invoke it without home-dir wiring.
+- **`docker/python-griffe-diff.py`** (new) — installs both versions into separate tmp prefixes via `pip install --no-deps --target`, loads each with `griffe.GriffeLoader`, walks `find_breaking_changes`, buckets each `Breakage.kind` into `removedExports` / `signatureChanges` / `newDeprecations` / `unanalyzableSymbols`. JSON-emits the result. NEVER fabricates: an unhandled kind lands in `unanalyzableSymbols` with the literal kind name attached so a future griffe release that adds a category fails loudly, not silently.
+- **`lib/sandbox/python-executor.ts`** (new) — `pythonImageExists`, `ensurePythonSandboxImage`, `runGriffeDiff`. Uses `execFile` everywhere (no shell — CLAUDE.md §5 rule 18). 90s timeout cap per griffe call; 2GB memory cap.
+- **`lib/agent/lang/python.ts`** — replaces the F23a-foundation stub with real griffe shelling. **Honest fallback paths**: if Docker is unreachable OR the image isn't built OR griffe fails on the pair, the adapter returns the analyzable-but-empty `SemanticDiff` with a SPECIFIC reason in `unanalyzableSymbols[0].reason` (e.g. "Python sandbox image is not built. Run a Python scan once…") — never silently degrades. On the happy path: `coveragePercent=100` + tier `'dts'` (the strongest existing schema value; v2.2.x polish will extend the enum with `'griffe'`).
+- **`tests/python-griffe-container.test.ts`** (new, gated `DOCKER_INTEGRATION=1`) — 3 cases against live Docker per CLAUDE.md §11b.1:
+  1. Image builds + griffe is on PATH for the non-root user
+  2. `runGriffeDiff` against a real PyPI pair (cachetools 4.2.4 → 5.3.0) returns parseable findings — total > 0
+  3. The adapter round-trips that output into a valid `SemanticDiff`
+- **§11b.1 win — caught TWO real bugs before merge:**
+  - **Case-sensitive substring bug.** First cut of `python-griffe-diff.py` did `"removed" in kind` against griffe's `BreakageKind.OBJECT_REMOVED` (uppercase enum form). Every breakage dropped into `unanalyzableSymbols`. The real-container test exposed it instantly (`Expected 0 to be greater than 0`). Fixed by lowercasing the kind before bucketing; first-cut's case-insensitive variant is now the committed shape.
+  - **Wrong Dockerfile COPY path.** `COPY docker/python-griffe-diff.py …` failed because the build context is `docker/`. Trivial but the test caught it before any user did. Both bugs would have shipped as "F23a works" without §11b.1.
+- **`eval/fixtures/python-cachetools-4-to-5.json`** (new) — bench fixture based on the actual griffe output. Bench is **9/9 100%/100%**; baseline re-seeded as the v2.2 honesty anchor.
+- **`pnpm test:docker`** wired to include `python-griffe-container`.
+- Real run captured: griffe on cachetools 4.2.4 → 5.3.0 returns 7 removed exports + 2 signature changes, 0 unbucketed. The full pipeline works end-to-end.
+- **Deferred (small) to F23a sub-gate session:**
+  - Schema extension: add `'griffe'` to `SemanticDiff.analysisTier` enum (touches bench fixtures + UI legends, so it lands with the sub-gate)
+  - Real public Python fixture repo scanned end-to-end (detect → diff → patch → verify → smoke) — required for the §F23 sub-gate per V2_PLAN.md
+- Verification: typecheck ✅ lint ✅ `pnpm test` ✅ **479 passed** / 16 skipped (gated +3 Python container tests). `pnpm eval` ✅ 9/9 100%/100% vs. new baseline. `DOCKER_INTEGRATION=1 pnpm test python-griffe-container` ✅ **3/3 in ~4s** against live Docker.
 
 **2026-06-01 (v2.2 / F23a — Python adapter foundation: detection + manifest parsing + PyPI staleness)**
 First sub-phase of F23. Mendel can now REGISTER a Python repo without silently defaulting to TS (the §5b honesty rule applied to language selection). Stale-deps work end-to-end against PyPI; semantic-diff is an HONEST stub pending the griffe Docker integration (V2_PLAN.md §F23a's incremental rule — F23a's sub-gate isn't claimed yet).

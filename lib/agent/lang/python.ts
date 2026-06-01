@@ -38,6 +38,12 @@ import type {
   StaleDepsResult,
   StaleDepLite,
 } from './types'
+import {
+  ensurePythonSandboxImage,
+  pythonImageExists,
+  runGriffeDiff,
+  PYTHON_IMAGE_NAME,
+} from '@/lib/sandbox/python-executor'
 
 // ── Detection ─────────────────────────────────────────────────────────────────
 //
@@ -365,36 +371,90 @@ async function detectStaleDeps(
 }
 
 /**
- * Honest stub. v2.2.x will wire griffe via the Python sandbox image; until
- * then we return an analyzable-but-empty SemanticDiff that tells the scorer
- * "we have no semantic information." This routes per-symbol scoring to the
- * single-signal column (changelog only) — confidence stays capped low/
- * medium. NEVER fabricates findings (§5b).
+ * Honest fallback shape returned when griffe can't run. Distinct from
+ * "griffe ran and found nothing" — the `unanalyzableSymbols[0].reason`
+ * names the gap so the scorer + UI can render an explicit "no semantic
+ * info available" badge instead of a misleading clean bill of health.
  */
-async function semanticDiff(
-  packageName: string,
-  fromVersion: string,
-  toVersion: string,
-): Promise<SemanticDiff> {
-  // Args kept in the signature so the griffe Docker integration (v2.2.x
-  // follow-on) can drop in without touching callers. void-discarded here.
-  void packageName; void fromVersion; void toVersion
+function buildSemanticDiffFallback(reason: string): SemanticDiff {
   return {
     removedExports: [],
     signatureChanges: [],
     newDeprecations: [],
     affectedSitesInRepo: [],
     coveragePercent: 0,
-    unanalyzableSymbols: [
-      {
-        symbol: '*',
-        reason: 'griffe (Python semantic-diff analyzer) Docker integration pending — v2.2.x follow-on per V2_PLAN.md §F23a. Confidence is capped accordingly.',
-      },
-    ],
-    // `ast-only` is the weakest tier the schema accepts. Honest: until
-    // griffe is wired, we have NO real semantic information for Python.
+    unanalyzableSymbols: [{ symbol: '*', reason }],
+    // `ast-only` is the weakest tier the schema accepts — honest about the
+    // fact that we had NO semantic information to work with.
     analysisTier: 'ast-only',
   }
+}
+
+/**
+ * Run the griffe-based semantic-diff inside the Python sandbox image, OR
+ * return an honest fallback if Docker isn't reachable, the image isn't
+ * built, or griffe itself fails on this pair.
+ *
+ * Fallback paths each carry a SPECIFIC reason so the UI can render the
+ * right banner ("griffe failed: pip install couldn't resolve <pkg>" is
+ * more useful than "could not analyze"). §5b: never fabricate findings,
+ * never silently degrade.
+ *
+ * Coverage math: griffe doesn't directly report a "% of public API
+ * analyzed" number. We treat a successful griffe run as 100% coverage
+ * (within griffe's own scope — which IS public + private symbols). The
+ * "Not Analyzed" disclosures handle the always-true caveats.
+ */
+async function semanticDiff(
+  packageName: string,
+  fromVersion: string,
+  toVersion: string,
+): Promise<SemanticDiff> {
+  // Image must exist locally — building it on the per-dep hot path is
+  // surprising. The runner's pre-flight ensures it once per scan via
+  // ensurePythonSandboxImage; if we got here without an image, the scan
+  // didn't run the pre-flight and we should fail honestly.
+  if (!(await pythonImageExists())) {
+    return buildSemanticDiffFallback(
+      `Python sandbox image ${PYTHON_IMAGE_NAME} is not built. Run a Python scan once to trigger the one-time build, or run 'docker build -f docker/python-sandbox.Dockerfile -t ${PYTHON_IMAGE_NAME} docker/' manually.`,
+    )
+  }
+  try {
+    const out = await runGriffeDiff(packageName, fromVersion, toVersion)
+    return {
+      removedExports: out.removedExports,
+      signatureChanges: out.signatureChanges,
+      newDeprecations: out.newDeprecations,
+      affectedSitesInRepo: [],
+      // griffe's analysis is exhaustive within its scope (it walks the
+      // entire installed package's public + private surface). We report
+      // 100% to reflect that — the scorer's "Not Analyzed" disclosures
+      // separately capture cross-cutting caveats (no repo context here,
+      // verification not run, etc.).
+      coveragePercent: 100,
+      unanalyzableSymbols: out.unanalyzableSymbols,
+      // The shared SemanticDiff schema constrains analysisTier to
+      // `'dts' | 'api-extractor' | 'ast-only'`. v2.2.x intentionally
+      // reuses the strongest existing tier label (`dts`) for griffe
+      // until the schema is extended with `'griffe'` — adding an enum
+      // member requires touching the bench fixtures + UI legends, so
+      // it's tracked as the next polish step (V2_PLAN.md §F23a sub-gate).
+      analysisTier: 'dts',
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return buildSemanticDiffFallback(`griffe could not analyze ${packageName} ${fromVersion} → ${toVersion}: ${msg}`)
+  }
+}
+
+/**
+ * Ensure the Python sandbox image is built before a Python scan starts.
+ * Called by the runner as a pre-flight when it picks the Python adapter.
+ * On Docker-down (no daemon) the runner surfaces this honestly so a user
+ * doesn't get an opaque "semantic-diff failed" mid-scan instead.
+ */
+export async function preflightPythonSandbox(): Promise<void> {
+  await ensurePythonSandboxImage()
 }
 
 // ── Exported adapter ──────────────────────────────────────────────────────────

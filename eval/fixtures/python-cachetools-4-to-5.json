@@ -1,0 +1,55 @@
+{
+  "id": "python-cachetools-4-to-5",
+  "packageName": "cachetools",
+  "fromVersion": "4.2.4",
+  "toVersion": "5.3.0",
+  "description": "v2.2 / F23a case: real Python pair (cachetools 4 → 5). Both signals partially agree (changelog flags 2 symbols, griffe flags 9). Per-symbol scoring routes the changelog-only/semantic-only cases — overall lands in the medium bucket. Inputs taken from live griffe-diff output captured 2026-06-01 against mendel-python-sandbox:v2.2.",
+  "mode": "offline",
+  "tags": ["self-test", "v2.2", "python"],
+  "input": {
+    "breakingChanges": [
+      {
+        "symbol": "cachetools.cache",
+        "changeType": "removed",
+        "description": "cachetools.cache was removed in v5 — import from the new public API.",
+        "sourceUrl": "https://github.com/tkem/cachetools/blob/v5.0.0/CHANGELOG.rst"
+      },
+      {
+        "symbol": "cachetools.lru",
+        "changeType": "removed",
+        "description": "cachetools.lru module removed in v5 — use cachetools.LRUCache directly.",
+        "sourceUrl": "https://github.com/tkem/cachetools/blob/v5.0.0/CHANGELOG.rst"
+      }
+    ],
+    "semanticDiff": {
+      "removedExports": [
+        "cachetools.cache",
+        "cachetools.fifo",
+        "cachetools.lfu",
+        "cachetools.lru",
+        "cachetools.mru",
+        "cachetools.rr",
+        "cachetools.ttl"
+      ],
+      "signatureChanges": [
+        { "symbol": "cachetools.cached", "before": "(cache, key, lock)", "after": "(cache, key, lock, info)" },
+        { "symbol": "cachetools.cachedmethod", "before": "(cache, key, lock)", "after": "(cache, key, lock, condition)" }
+      ],
+      "newDeprecations": [],
+      "affectedSitesInRepo": [],
+      "coveragePercent": 100,
+      "unanalyzableSymbols": [],
+      "analysisTier": "dts"
+    },
+    "patchedFilePaths": ["pyproject.toml", "src/cache_helper.py"],
+    "verificationPassed": true
+  },
+  "expected": {
+    "bucket": "medium",
+    "overall": { "min": 60, "max": 79 },
+    "perSymbolHits": [
+      { "symbol": "cachetools.cache", "shouldDetect": true },
+      { "symbol": "cachetools.lru", "shouldDetect": true }
+    ]
+  }
+}
