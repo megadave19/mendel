@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-02
-> **Current phase:** **v2.3 IN PROGRESS** — F25 **sub-phase 1 complete**: `MonitorSchedule` schema (default OFF + encrypted PAT) + pure `scheduler.ts` policy (cron validation + decideFire with MIN_GAP_SECONDS + concurrency cap) + `worker/monitor.ts` node-cron orchestrator + `pnpm monitor` script + 20 boundary tests. Live worker smoke verified (registers PR poller; finds no enabled schedules; clean shutdown). Sub-phase 2 next (REST endpoints + Settings UI). Bench unchanged at 14/14 100/100. Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` → `05b7164` (F24 done) → `<F25 s1>`.
+> **Current phase:** **v2.3 IN PROGRESS** — **F25 sub-phase 2 complete: F25 done end-to-end.** REST endpoints (`GET/PUT/DELETE /api/monitor-schedules/[repoFullName]`) + `<MonitorPanel />` for per-repo schedule + recent `monitor.*` log feed. PAT is encrypted on PUT, NEVER returned in GET (only `hasPat` boolean) + wiped from React state after save. Live round-trip on dev server verified (GET defaults → PUT with PAT → readback hides PAT → DELETE clean). Bench unchanged at 14/14 100/100. **F24 + F25 both done; F26 MCP server next (last v2.3 feature).** Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` → `05b7164` → `5b20899` (F25 s1) → `<F25 s2>`.
 
 ---
 
@@ -109,6 +109,32 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-02 (v2.3 / F25 sub-phase 2 — REST endpoints + Settings UI MonitorPanel; F25 COMPLETE)**
+Closes F25 end-to-end. Mendel now has a full surface for the continuous monitor: REST endpoints (GET/PUT/DELETE) to manage schedules with encrypted PATs, plus a `<MonitorPanel />` that mirrors AutoMergePanel. Default-OFF schema still binds; the user MUST type a repo name + supply a PAT + tick the ack to enable a schedule.
+- **`app/api/monitor-schedules/[repoFullName]/route.ts`** (new) — GET / PUT / DELETE:
+  - **GET** returns the stored row OR schema defaults + `exists:false` + `hasPat:false` on a missing row. **NEVER returns the encryptedPat** (only `hasPat: boolean`); two assertions in the route tests pin that contract (`expect(body.encryptedPat).toBeUndefined()` and `expect(JSON.stringify(body)).not.toContain('enc:secret-pat-value')`).
+  - **PUT** accepts an optional `pat` in the body. On CREATE it's required (400 otherwise — refusing rather than creating a row with empty ciphertext that would crash at fire time). On UPDATE without `pat` the prior `encryptedPat` is PRESERVED (so users can toggle enable / change cron without re-entering). Cron is validated through `validateCronExpression`; `repoUrl` is restricted to `https://github.com/`; URL-decoded path is re-validated against the `owner/name` regex.
+  - **DELETE** removes the row via `deleteMany`. The worker's next reload picks that up + stops the prior task.
+  - Rate-limited GET 60/min, PUT/DELETE 10/min.
+- **`components/monitor/MonitorPanel.tsx`** (new) — single panel rendered inside S9 after AutoMergePanel:
+  - Honest copy block names every constraint (default OFF, cron validation, 5-min floor, 2-concurrent cap, AES-256-GCM, never logged)
+  - Manual repo entry (never enumerated without user input)
+  - After Load: enable toggle + cron input with three example expressions + PAT input with Show/Hide toggle + last-error red block (only when `lastError !== null`) + required ack checkbox that gates Save when enabling
+  - **PAT security UI rules:** `autoComplete="off"`, password masked by default, plaintext wiped from React state immediately after a successful PUT (`setPat('')`), Show/Hide also resets on Load
+  - Save/Delete buttons + a single-error surface
+  - Recent monitor events feed (last 10) with one-line summaries via the pure `summariseMonitorPayload`
+- **`app/(app)/settings/page.tsx`** — adds `<MonitorPanel />` to the right-column stack after `<AutoMergePanel />`. No other settings changed.
+- **Pure helper extracted for testability:**
+  - **`summariseMonitorPayload`** — formats `monitor.fire` (fired → scan ID; skipped: reason) and `monitor.error` (error: message) into one-line summaries. Unknown kinds fall back to a JSON snippet so a future event class is surfaced honestly, not silently dropped. `null`/non-object payload → `(no payload)`.
+- **Tests (+19 new):**
+  - **`tests/monitor-panel.test.ts`** (8): every `monitor.*` shape (fired, fired-without-scanId, skipped, skipped-without-reason, error, unknown kind, null payload, non-object payload).
+  - **`tests/monitor-schedules-route.test.ts`** (11): GET on missing row returns defaults + hides encryptedPat; GET on stored row hides encryptedPat (TWO assertions, including a stringify check); PUT 400 on CREATE without PAT; PUT 200 on CREATE with PAT (encrypt called once; response masks ciphertext); PUT 200 on UPDATE without PAT (encrypt NOT called; prior ciphertext preserved); PUT 400 on bad cron; PUT 400 on non-`https://github.com/` repoUrl; PUT 400 on bad path; DELETE happy path; DELETE 400 on bad path.
+- **Live round-trip verified on dev server:** GET on missing row returns the honest default shape; PUT creates with PAT (`hasPat:true` in response, encryptedPat NOT in response); GET after save still hides PAT; DELETE returns `{ok:true}`.
+- **Pre-existing dev-server gotcha resurfaced + handled:** `pkill + rm -rf .next + nohup pnpm dev` cycle. Worth keeping in STATE.md as the standard reset; the dev server cached a stale layout chunk path in two prior sessions and only a hard reset cleared it.
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **651 passed** / 22 skipped (+19 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** · `pnpm test:docker` not re-run (no Docker change).
+- **F25 status: DONE.** Schema + scheduler + worker + `pnpm monitor` (s1) + REST endpoints + Settings UI + Recent-events viewer (s2). The continuous monitor is a complete user-facing feature.
+- **Next:** **F26 MCP server** — `mcp/server.ts` stdio + tool schemas. Per V2_PLAN.md + CLAUDE.md §5 r17: MCP tool inputs Zod-validated; encrypted-PAT-only; gating from policy modules carries over (a caller cannot bypass §5c via MCP). Closes v2.3 once shipped.
 
 **2026-06-02 (v2.3 / F25 sub-phase 1 — continuous-monitor foundation: schema + pure scheduler + node-cron worker + `pnpm monitor`)**
 First sub-phase of F25. Same shape as F24 s1 + F23* s1: pure policy + minimum IO surface + exhaustive boundary tests + no UI yet. The worker is fully functional headless (`pnpm monitor`); sub-phase 2 will land the REST endpoints + Settings UI for managing schedules.

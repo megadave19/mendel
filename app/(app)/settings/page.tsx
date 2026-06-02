@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { PanelFrame } from '@/components/phase-d/PanelFrame'
 import { AutoMergePanel } from '@/components/automerge/AutoMergePanel'
+import { MonitorPanel } from '@/components/monitor/MonitorPanel'
 import { useToast } from '@/components/shared/toast'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { TIER_1_HOSTS, Tier2HostSchema } from '@/lib/sandbox/iptables-allowlist'
@@ -446,6 +447,12 @@ export default function SettingsPage() {
               decisions feed. Default OFF at the schema level; this
               panel is the ONLY way a user can opt in. */}
           <AutoMergePanel />
+
+          {/* v2.3 / F25 sub-phase 2 — Continuous-monitor opt-in. Per-repo
+              cron schedule + enable toggle + lastFired/lastError surface
+              + recent monitor.fire log feed. Default OFF at the schema
+              level. The worker (`pnpm monitor`) reads these rows. */}
+          <MonitorPanel />
         </section>
       </div>
     </div>
