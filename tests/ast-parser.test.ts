@@ -120,3 +120,47 @@ describe('ast-parser', () => {
     expect(identifiers.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+/**
+ * v2.2.x regression — path contract for findPackageUsageSites.
+ *
+ * buildReferenceIndex walks the tree with absolute paths, so usage-site
+ * filePaths are ABSOLUTE. The runner MUST relativize them to pkgRoot
+ * before handing them to patchFileSmart (which does
+ * path.join(pkgRoot, filePath)). The MeteoalarmCard scan exposed the
+ * miss: every AST file was joined as path.join(pkgRoot, <absolute>) →
+ * garbage → "skip … not found" → Fix #4 silently disabled.
+ *
+ * This test pins: (a) usage-site paths are absolute under the repo root,
+ * and (b) path.relative(root, filePath) yields the repo-relative path the
+ * patcher expects.
+ */
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import nodePath from 'node:path'
+import { buildReferenceIndex, findPackageUsageSites } from '@/lib/agent/signals/ast-parser'
+
+describe('findPackageUsageSites — path contract (v2.2.x regression)', () => {
+  it('returns ABSOLUTE paths under the repo root; path.relative gives the patcher-relative path', () => {
+    const root = mkdtempSync(nodePath.join(tmpdir(), 'mendel-ast-'))
+    try {
+      mkdirSync(nodePath.join(root, 'src'), { recursive: true })
+      writeFileSync(
+        nodePath.join(root, 'src', 'editor.ts'),
+        `import { computeStateDisplay } from 'custom-card-helpers'\nexport const x = computeStateDisplay()\n`,
+      )
+      const index = buildReferenceIndex(root)
+      const sites = findPackageUsageSites(index, 'custom-card-helpers')
+      expect(sites.length).toBeGreaterThan(0)
+      const fp = sites[0].filePath
+      // (a) absolute, under root — the property the runner must account for
+      expect(nodePath.isAbsolute(fp)).toBe(true)
+      expect(fp.startsWith(root)).toBe(true)
+      // (b) relativizing yields the patcher-relative path (src/editor.ts) —
+      // exactly what the runner fix does before calling patchFileSmart.
+      expect(nodePath.relative(root, fp)).toBe(nodePath.join('src', 'editor.ts'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})

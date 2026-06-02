@@ -589,8 +589,21 @@ export async function runScan(
         const refIndex = buildReferenceIndex(pkgRoot)
         const usageSites = findPackageUsageSites(refIndex, dep.name)
         // Rank files by usage count (most affected sites first).
+        // v2.2.x FIX: usageSites carry ABSOLUTE paths (buildReferenceIndex
+        // walks the tree via path.join(repoPath, …)). But patchFileSmart +
+        // diagnosis.filesToModify both use paths RELATIVE to pkgRoot, and
+        // patchFileSmart does path.join(pkgRoot, filePath). Feeding it an
+        // absolute path produced a garbage doubled path → existsSync false →
+        // EVERY AST usage file logged "skip … not found", silently disabling
+        // Fix #4 (trust real usage sites over LLM file-guessing). Patching
+        // had been running on LLM picks alone. Relativize here so the AST
+        // files resolve AND dedup correctly against the LLM-suggested ones.
+        // (Caught on the MeteoalarmCard scan: 7 AST files all "not found".)
         const fileImpact = new Map<string, number>()
-        for (const u of usageSites) fileImpact.set(u.filePath, (fileImpact.get(u.filePath) ?? 0) + 1)
+        for (const u of usageSites) {
+          const rel = path.relative(pkgRoot, u.filePath)
+          fileImpact.set(rel, (fileImpact.get(rel) ?? 0) + 1)
+        }
         const usageFilesRanked = [...fileImpact.entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([f]) => f)
