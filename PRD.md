@@ -334,7 +334,7 @@ v2 deepens the engine **on the local machine** — no cloud rearchitecture (that
 | F28 | Multi-tenant data + RLS | Every row tenant-owned; **dual isolation** (Postgres Row-Level Security + Prisma app-layer scoping) so no user can ever see another's data |
 | F29 | Cloud deploy + headers | Vercel; CSP/HSTS/X-Frame/CORS hardening |
 | F30 | Hosted Postgres + DLP | **Supabase Postgres** + connection pooling + automated backups/PITR + tested restore runbook |
-| F31 | `/inspect` live | F22's pure-analysis surface runs in the cloud — **no sandbox, free** — the public, rate-limited demo |
+| F31 | `/inspect` live | F22's pure-analysis surface runs in the cloud — **no sandbox, free** — **login-gated** demo (one-click GitHub sign-in → every use is a captured lead), per-tenant rate-limited |
 | F32 | Local-runner bridge | `RemoteSandboxProvider`: cloud queues a scan, the user's `pnpm runner` executes it in their **local Docker** and pushes results back — full scans, free, PAT stays on the user's machine |
 | F33 | Hosted sandbox (opt-in, paid) | E2B/Fly behind the v2 `SandboxProvider`, with §11b.1 egress test + per-tenant sandbox-minute budget |
 | F34 | Observability + abuse protection | Sentry (secret-scrubbed) · per-tenant rate limits + LLM/sandbox budgets · tenant-scoped audit log |
@@ -342,7 +342,7 @@ v2 deepens the engine **on the local machine** — no cloud rearchitecture (that
 
 **Release sequencing:** v3.0 control plane (F27–F31, F34 core — free) → v3.1 BYO-compute scans (F32 — free) → v3.2 hosted sandbox (F33 — paid, opt-in) → v3.3 ship & prove (F35).
 
-**Resolved product decisions (2026-06):** cloud `/inspect` is **public + rate-limited** (max marketing reach, abuse-controlled); dependency freshness on Mendel's own repo is handled by **Mendel scanning itself** (dogfood), not Dependabot.
+**Resolved product decisions (2026-06):** cloud `/inspect` is **login-gated** (GitHub OAuth — one-click for devs; every use becomes a captured lead, and per-tenant rate limits become enforceable); dependency freshness on Mendel's own repo is handled by **Mendel scanning itself** (dogfood), not Dependabot.
 
 **Out of scope for v3 (honest boundaries):** no user file uploads (smallest attack surface); no roll-your-own auth; no cross-tenant features.
 

@@ -435,7 +435,7 @@ Multi-tenant cloud surfaces. **Reuse before build** still binds — these compos
 ### v3 changes to existing screens (no new routes)
 
 - **All authed screens:** a tenant header chip (GitHub login + avatar) in the existing chrome; otherwise unchanged (they were built tenant-agnostic).
-- **S10 (Inspector):** when public/unauthed in the cloud, a subtle "sign in to scan a repo" affordance — but `/inspect` itself works without login (the free demo). Rate-limit-hit state shows an honest "slow down — try again in a moment" (429), not a crash.
+- **S10 (Inspector):** **login-gated in the cloud** (owner decision) — an unauthed visitor hits the S0 sign-in gate first, then lands on `/inspect`. Still the cheapest demo (no sandbox), now tied to a known tenant. Rate-limit-hit state shows an honest "slow down — try again in a moment" (429), not a crash.
 
 ---
 

@@ -775,7 +775,7 @@ New models: `RunnerToken` (F32, tenant-scoped, hashed, revocable); `AuditLog` (e
 
 **15.5 Infra.** Vercel hosting + `vercel.ts` config + security-header middleware (CSP/HSTS/X-Frame DENY/nosniff/Referrer/no X-Powered-By) + explicit-origin CORS. **Supabase Postgres** + pooled connections + automated backups/PITR. Vercel Cron / hosted queue for the monitor worker (moves from `worker/monitor.ts` unchanged behind the pure `decideFire` scheduler). Upstash Redis / Vercel KV for per-tenant rate-limit + budget counters. Sentry (secret-scrubbed breadcrumbs). HTTP/SSE MCP transport (the stdio server's tool registry reused unchanged behind an HTTP handler — but **always session-gated; never unauthenticated**, per §5d).
 
-**15.6 `/inspect` live (F31).** F22 orchestrator is pure analysis (no clone, no sandbox) → runs directly in a Vercel function. Public + rate-limited (10/min/IP) + LLM-token-budgeted.
+**15.6 `/inspect` live (F31).** F22 orchestrator is pure analysis (no clone, no sandbox) → runs directly in a Vercel function. **Login-gated** (NextAuth session required, F27) + per-tenant rate-limited (10/min) + LLM-token-budgeted. Every inspection is therefore tied to a known tenant (captured lead + enforceable per-tenant limits).
 
 **15.7 Testing.** Tenant-isolation suite against **real Postgres** (two seeded tenants, RLS + app-layer both proven) is the v3 §11b-equivalent + stop-the-line. Plus RLS policy tests, auth E2E, secret-scrub, account-deletion cascade, per-tenant budget enforcement, backup/restore drill, hosted-sandbox §11b.1. Detail: CLAUDE.md §7.9 / V3_PLAN.md §9.
 

@@ -73,7 +73,7 @@ New surfaces (login, account, tenant dashboard) reuse DESIGN.md §5 tokens, §6 
 ### The honest architectural consequence
 A Vercel function **cannot reach a stranger's local Docker** over the internet. So full scans in v3.0/v3.1 use a **BYO-compute model**: the cloud is the *control plane* (queue, history, UI, auth); the user runs a small local **Mendel runner** (`pnpm runner`) that authenticates to the cloud, pulls *their own* queued scans, executes them in *their* local Docker, and pushes results back. This is exactly how GitHub self-hosted runners + CI agents work. It keeps compute free and — critically — means **a user's PAT can stay on their own machine** for the actual git/clone operations, shrinking the cloud's secret blast radius.
 
-`/inspect` (F22) is the exception that shines here: it's pure analysis (download two package versions, diff their APIs) — **no repo clone, no sandbox** — so it runs **fully in the cloud, for free, today.** That's the zero-friction public demo surface (prospects try it without installing anything).
+`/inspect` (F22) is the exception that shines here: it's pure analysis (download two package versions, diff their APIs) — **no repo clone, no sandbox** — so it runs **fully in the cloud, for free, today.** It's the cheapest cloud demo surface: a prospect signs in with GitHub (one click) and gets a real calibrated analysis. **Login-gated (owner decision):** the one-click GitHub sign-in is low friction for devs, and — crucially — **every `/inspect` user becomes a known, captured lead** rather than an anonymous hit, plus per-tenant rate limits become enforceable.
 
 ---
 
@@ -121,8 +121,9 @@ A Vercel function **cannot reach a stranger's local Docker** over the internet. 
 
 ### F31 — `/inspect` live in the cloud (free demo surface)
 - F22's inspect orchestrator is **pure analysis** — no clone, no sandbox. Runs in a Vercel function directly.
-- Rate-limited (security-rule 2: 10/min/IP) + token-budgeted (AI rule) since it calls the LLM + registries.
-- This is the **public, no-login demo** (or light-login) that shows Mendel's calibration to prospects at ~$0.
+- **Login-gated** (GitHub OAuth): a user must sign in before running an inspection. One-click for devs; turns every use into a captured lead + makes per-tenant limits enforceable.
+- Per-tenant rate-limited (security-rule 2: 10/min) + LLM-token-budgeted (AI rule) since it calls the LLM + registries.
+- This is the cheapest cloud demo of Mendel's calibration, at ~$0 (no sandbox).
 
 ### F32 — Local-runner bridge (BYO-compute, free full scans)
 - New `RemoteSandboxProvider` implementing the v2 `SandboxProvider` interface, but instead of running Docker directly it **enqueues** the scan to a tenant-scoped queue.
@@ -271,7 +272,7 @@ I will draft these as edits once you approve the plan — same "propose then app
 
 **Open questions — RESOLVED (owner, 2026-06-02)**
 1. ~~Neon vs Supabase?~~ → **Supabase** (engine stays Postgres; Neon-swappable).
-2. ~~`/inspect`-live public or gated?~~ → **Public + tight rate limits** (10/min/IP). Best marketing reach with abuse control. F31 + F34 enforce the limit.
+2. ~~`/inspect`-live public or gated?~~ → **Login-gated** (GitHub OAuth). One-click sign-in for devs; every use is a captured lead + per-tenant rate limits enforceable. F27 gates it; F31 + F34 enforce the per-tenant limit.
 3. ~~Dogfood Dependabot or Mendel-scans-itself?~~ → **Mendel scans itself.** Its own repo is OWNED → PRs flow freely (§5c.1). Free real-world testing + the strongest story ("Mendel maintains Mendel"). No Dependabot on Mendel's repo (we don't outsource our own job to a competitor's bot).
 
 **Remaining for owner (non-blocking):** verify Supabase free-tier idle-pause is acceptable for the always-available demo, or add a keep-alive (§9 backup/restore drill covers this check).
