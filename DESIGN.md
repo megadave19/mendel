@@ -404,6 +404,41 @@ New surfaces obey the existing 3-mode map and anti-references. **Reuse before bu
 
 ---
 
+## 11c. Per-Screen Briefs — v3 (Cloud)
+
+Multi-tenant cloud surfaces. **Reuse before build** still binds — these compose existing components; the cyberpunk-CRT system, Bones (no new poses), tokens, and motion are unchanged. Each gets a `/dev/[component]` build-in-isolation + §14 workflow + the §7.2 step-6 spec audit before "done." Full context: V3_PLAN.md §6.
+
+### S0 — Sign in with GitHub (F27)
+
+- **Purpose:** the one pre-app gate. Replaces the local PAT paste.
+- **Mode:** Boot (the most reductive — one action, one mascot, scan-line sweep on enter).
+- **Layout:** single centered `<PanelFrame>` over `<ScanlineOverlay>`; Bones idle; one lime "Sign in with GitHub" button (the only primary action); below it, **honest scope-disclosure copy** ("Mendel requests `repo` + `read:user`. Your token is encrypted at rest and never shown back to you or any other user."). No password field (OAuth only). No marketing clutter — this is a gate, not a landing.
+- **Must-have:** the scope copy is real, not lorem; the button is wired (§7.2a dead-control rule); error state ("GitHub sign-in failed — try again") is generic, never a stack trace.
+- **Route:** `/signin`.
+
+### S13 — Account / Tenant (F27/F32)
+
+- **Purpose:** the user's identity + connected GitHub + runner tokens + danger-zone.
+- **Mode:** Rest. **Nixtio-density — not 80% empty** (the anti-reference still binds).
+- **Layout:** two-column. Left: identity card (GitHub avatar/login, connected scopes, "encrypted, never shown" PAT status pill — same `<StatusPill>` as Settings). Right: **Runner Tokens** panel (create/revoke tenant-scoped runner tokens for `pnpm runner`, F32 — each shows last-used, a working revoke button) + **Danger Zone** (delete account → cascades all your data; a real confirm, real handler).
+- **Must-have:** every control wired; the danger-zone delete is genuinely destructive + confirmed (§10 destructive-op rule); token values shown **once** on creation, then masked forever.
+- **Route:** `/account`.
+
+### S14 — Runner Status (F32)
+
+- **Purpose:** "is your local runner connected?" + setup copy. Honest about where compute happens.
+- **Mode:** Rest with a live status pulse.
+- **Layout:** a prominent live indicator with three honest states — **connected** (lime phosphor, "your machine is running scans"), **disconnected** (amber, "start `pnpm runner` to enable full scans"), **scan-in-flight** (cyan, animated, "running <repo> on your machine"). Below: the `pnpm runner` setup command block + a one-line explanation that compute runs on the user's machine (free) until hosted sandbox lands.
+- **Must-have:** the status reflects **real** runner heartbeat data (§7.2a decorative-data rule — wired to the actual queue/runner state, not a fake light).
+- **Route:** `/runner` (or a strip in S13).
+
+### v3 changes to existing screens (no new routes)
+
+- **All authed screens:** a tenant header chip (GitHub login + avatar) in the existing chrome; otherwise unchanged (they were built tenant-agnostic).
+- **S10 (Inspector):** when public/unauthed in the cloud, a subtle "sign in to scan a repo" affordance — but `/inspect` itself works without login (the free demo). Rate-limit-hit state shows an honest "slow down — try again in a moment" (429), not a crash.
+
+---
+
 ## 12. Component Inventory
 
 Components to build for Phase D. Each gets its own spec file under `/components/` once we move to build.

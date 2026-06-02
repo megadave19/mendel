@@ -57,7 +57,7 @@ No persistent memory between sessions. Owner provides context. Don't speculate a
 - **Phase D (Design Iteration)** — CLOSED 2026-05-27. Cyberpunk-CRT redesign + S5/S6/S7 inline + permalinks + Bones 2D mascot. Full scope in PRD §17b and [DESIGN.md](http://DESIGN.md).
 - **v1.5 (Calibrated Confidence)** — ENGINEERING COMPLETE 2026-05-28. Semantic diffing, asymmetric scoring, threshold-gated PRs, search-replace patching, iptables allowlist, node_modules cache, rejection learning. Owner-side closeout (Loom, case study, ≥3 more PRs) remains.
 - **v2 (Local capability depth)** — **ACTIVE per [V2_PLAN.md](http://v2_plan.md/).** Stays local (Docker sandbox, PAT-session, SQLite). Features F19–F26: eval bench, smoke-test (Phase C), monorepo, "point at any API", multi-language (Python/Go/Rust), auto-merge, continuous monitoring, MCP server. Sequenced v2.0 → v2.4. **Read V2_PLAN.md before any v2 work**, plus the relevant PRD §12 / TRD §6.4/§8/§9.5/§10 / DESIGN §11b sections.
-- **v3 (Cloud)** — post-v2. Vercel + NextAuth OAuth + multi-tenant Postgres + hosted sandbox (E2B/Fly). PRD §12b / TRD §15. v2 builds cloud-ready (nullable `tenantId`, `SandboxProvider` interface) so v3 is a deployment project, not a rewrite.
+- **v3 (Cloud)** — **PLANNED per [V3_PLAN.md](http://v3_plan.md/) (PROPOSED → applied 2026-06).** Multi-tenant SaaS: Vercel + NextAuth GitHub OAuth + **Supabase Postgres** + RLS tenant isolation + Upstash rate-limit + Sentry. Compute stays **local Docker (BYO-compute runner)** until users + budget justify the **hosted sandbox** (E2B/Fly, reserved behind the `SandboxProvider` seam). Free-tier-first: control plane (UI/DB/auth/`/inspect`) runs ~$0; the hosted sandbox is the only real cost and is deferred. **Read V3_PLAN.md before any v3 work**, plus §5d (multi-tenant security floor), the relevant PRD §12b / TRD §15 / DESIGN §11c sections. v2 built cloud-ready (nullable `tenantId`, `SandboxProvider` interface, pure policy layers) so v3 is a deployment + multi-tenancy project, not a rewrite.
 
 Read [**PRD.md**](http://PRD.md), [**TRD.md**](http://TRD.md), and [**V2_PLAN.md**](http://v2_plan.md/) (project root, mirrored in Notion) for full context.
 
@@ -94,6 +94,8 @@ Do not propose alternatives without strong reason.
 | Package manager | pnpm | • npm, yarn detection | • pip/poetry/uv, go mod, cargo (per language) |
 
 Requirements: Node 20+, pnpm 9+, Docker Desktop, Git, `ENCRYPTION_KEY` ≥ 32 chars. **v2 also pulls per-language Docker base images on first use.**
+
+**v3 stack additions (cloud — see V3_PLAN.md §1):** DB host **Supabase Postgres** (engine stays Postgres via Prisma; swappable to Neon) + **RLS** tenant isolation · Auth **NextAuth.js + GitHub OAuth** (replaces PAT-session) · Hosting **Vercel** · Rate-limit/counters **Upstash Redis / Vercel KV** · Errors **Sentry** (secret-scrubbed) · Migrations **versioned `prisma migrate`** (not `db push`) · Compute **local Docker (BYO-compute runner)** now, **hosted sandbox (E2B/Fly)** reserved behind `SandboxProvider`.
 
 ## 3. File Structure
 
@@ -288,6 +290,18 @@ The agent **assists** the human contribution dialogue; it never **impersonates**
 5. External, no relevant issue exists → **report only**; hand the human a draft so *they* decide whether to make contact, in their own voice.
 
 The governing principle: **act freely where consent exists (your repos, or an issue the maintainer already opened); everywhere else, prepare — never initiate.**
+
+## 5d. Hard Rules — Multi-Tenant Security & Data-Loss Floor (Non-negotiable, v3)
+
+v3 puts many strangers' GitHub tokens + scan data in **one shared database**. A single cross-tenant leak is a product-ending incident. These rules bind every v3 API route, worker, MCP tool, and query. They EXTEND §5 (they never relax it). Full build context: **V3_PLAN.md §7**. If you find yourself looking for a way around any of these: stop, write `STATE.md` note, surface to owner.
+
+1. **Dual tenant isolation — RLS AND app-layer, both, always.** Every tenant-owned row carries a non-null `tenantId` FK → `Tenant`. (a) **Postgres Row-Level Security** policies (`USING (tenant_id = current_setting('app.tenant_id'))`) are the DB-level backstop — even a forgotten `WHERE` cannot cross tenants. (b) A **Prisma middleware/extension** injects `tenantId` into every `where` + `create` as the first line. **Both layers, because one alone is one bug from a leak.** A query/route/tool that can return a row it doesn't own is a stop-the-line defect.
+2. **AuthZ ≠ AuthN.** "Logged in" is not "allowed." Every request verifies the target row's `tenantId` == the session's tenant. Mirrors §5 rule 4, hardened for multi-tenant.
+3. **Secret blast-radius minimization.** A PAT leak in cloud = *every* user, not one. PATs/OAuth tokens: AES-256-GCM at rest, decrypted only in-memory at use, **never** logged, **never** returned in any API/MCP response, **never** in a client bundle, always tenant-scoped on read. Where possible (BYO-compute runner, F32) keep the clone-time PAT on the user's machine, not in the cloud.
+4. **Data-loss prevention is a control, not an afterthought.** Versioned `prisma migrate` (NOT `db push`) in prod — schema history must be auditable + reversible. Automated backups + point-in-time recovery enabled. A **tested restore runbook** exists before launch. Account deletion cascades the full tenant's data (verified by test) and touches no other tenant.
+5. **Per-tenant budgets cap cost-attacks.** A scan/LLM cost-attack is a data-availability attack. Per-tenant rate limits (auth 5/15min, general 60/min, scan 10/min, LLM 10/min, inspect 10/min) + per-tenant LLM-token + sandbox-minute budgets. `429 + Retry-After`. Mirrors §5 rule 3 + the LLM token cap, per-tenant.
+6. **Secrets scrubbed from observability.** Sentry/log breadcrumbs must never contain a token, PAT, or session cookie — verified by a test that triggers an error carrying a fake token and asserts it's absent from the captured payload. Mirrors §5 rule 8.
+7. **The hosted sandbox (v3.2) gets the full §11b.1 treatment.** A real-container egress test on the E2B/Fly provider before it's trusted — exactly as each per-language image got. Booting untrusted OSS code in a shared cloud is the highest-risk op; network=none on Phase B/C still binds.
 
 ## 6. UI/UX Rules — Design Language
 
@@ -572,6 +586,42 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm smoke
 # + the phase-specific gate checklist from §7.3
 ```
 
+### 7.9 v3 Testing Strategy (multi-tenant cloud — mandatory)
+
+v3's failure mode is NOT a broken feature — it's a **cross-tenant leak** or **data loss**, both invisible to a green feature suite. So v3 adds test classes that are stop-the-line, in the same spirit §11b/§11c were for v2's Docker/agent risks. Full detail: **V3_PLAN.md §9**.
+
+| Layer | Tool | What it catches |
+|---|---|---|
+| **Tenant-isolation (the v3 §11b-equivalent)** | Vitest against **real Postgres** (testcontainers/Supabase branch), two seeded tenants | The #1 risk. For every tenant-owned model + every API route + every MCP tool: tenant A's session cannot read/write/delete tenant B's row — proven at BOTH the app layer (Prisma scoping) AND the DB layer (RLS). A single leak is stop-the-line. |
+| **RLS policy tests** | SQL-level, real Postgres | A row with `tenant_id = B` is invisible to a session with `app.tenant_id = A` even on a raw `SELECT *` with no `WHERE`. Proves the backstop works independently of app code. |
+| **Auth flow E2E** | Playwright | OAuth login → tenant row created → httpOnly session cookie set → protected route reachable → logout clears session. |
+| **Secret-scrub test** | Vitest | Trigger an error carrying a fake PAT; assert it is ABSENT from the Sentry/log payload (§5d rule 6). |
+| **Backup/restore drill** | Manual, documented, run once pre-launch | Data-loss prevention is only real if restore is tested. A dropped-table scenario must recover via PITR. |
+| **Account-deletion cascade** | Vitest + real Postgres | Deleting tenant A removes ALL of A's rows and touches ZERO of B's rows. |
+| **Per-tenant budget enforcement** | Vitest | The N+1th request in a window gets `429`; a tenant over its LLM/sandbox budget is stopped, not silently served. |
+| **Hosted-sandbox §11b.1** (v3.2) | Real container on E2B/Fly, gated env var | Egress filter genuinely blocks on the hosted provider — exactly like the per-language images. |
+
+**Anti-repeat guardrails — lessons from v1.x/v2 carried into v3 (so I do not re-make them):**
+- **§11c data-first, applied to isolation:** do NOT assume RLS "should work." Seed two real tenants in real Postgres and *prove* B's rows are invisible to A — by reading the actual query result, not by reasoning about the policy. (v2 lesson: 4 debugging rounds wasted theorizing before reading the DB.)
+- **§11b real-fixture, applied to the cloud:** do NOT trust that Supabase/Neon/Vercel behave as the docs imply — verify the actual deployed behavior (connection pooling limits, RLS `current_setting` propagation, cold-start session handling) against the real service before declaring done. (v2 lesson: Docker hallucinations — apidiff `-m` flag, cargo-semver-checks `--release-type=patch`, the iptables stdout-pollution bug — all "looked right," all wrong until run for real.)
+- **Push ≠ commit ≠ done:** "deployed" means *verified live on the deployed URL*, not "committed locally." (Session lesson: README claimed up-to-date while 45 commits sat unpushed.)
+- **Assumptions about the platform are bugs until verified:** Prisma+SQLite had no native enums; do not assume Supabase RLS, Vercel function timeouts, or NextAuth cookie defaults without checking. A green local test against SQLite says nothing about Postgres+RLS behavior.
+
+### 7.9a v3 Deploy-Checklist Gate (pre-every-ship, blocking)
+
+No v3 deploy ships unless ALL are green (the §5d rule 4 + best-practice-12 gate):
+- [ ] No `.env`/secret committed; all secrets in Vercel/Supabase env config
+- [ ] RLS policies active on every tenant-owned table (isolation suite proves it)
+- [ ] Versioned migration applied (not `db push`); backup taken pre-migrate
+- [ ] Debug/verbose logging OFF in prod
+- [ ] DB not publicly exposed; pooled connection only
+- [ ] HTTPS enforced; security headers present (CSP/HSTS/X-Frame DENY/nosniff/Referrer/no X-Powered-By)
+- [ ] Rate limiting active on every public endpoint; CORS restricted to the deployed origin
+- [ ] `pnpm audit` clean
+- [ ] Secret-scrub test passes (no token in a captured error)
+- [ ] Tenant-isolation + account-deletion + auth-E2E suites green
+- [ ] Backups + PITR enabled; restore runbook tested once
+
 ## 8. Deployment Procedures
 
 ### Local Development
@@ -699,8 +749,17 @@ Reject these even if asked:
 - **Reverting the S4 dep graph to decorative-only 3D**, or shipping any decorative-only data viz on a primary screen (§7.2a step 5 still binds).
 - **Adding a second mascot pose beyond "watching" in v2**, or duplicating/speaking the mascot (DESIGN §8).
 - **Reintroducing R3F** — 3D is vanilla Three.js (DESIGN §9 Rev 2).
-- **Building a v3/cloud feature during v2** (multi-tenant, OAuth, hosted sandbox) — if it creeps in, stop and write a `STATE.md` note. Build cloud-*ready*, not cloud.
 - Running `pnpm build` while the dev/preview server shares `.next` (corrupts vendor chunks — clear `.next` + restart).
+
+**v3 additions (Rev 7: V3_PLAN):**
+
+- **Any query/route/worker/MCP tool that can return a row it doesn't own** (§5d rule 1) — cross-tenant leak is stop-the-line. Both RLS + app-layer scoping required; neither alone is sufficient.
+- **`prisma db push` in production** — v3 uses versioned `prisma migrate` only (§5d rule 4). `db push` stays a local-dev convenience.
+- **Any secret (PAT, OAuth token, session cookie) in logs, Sentry breadcrumbs, API/MCP responses, or client bundles** (§5d rules 3 + 6).
+- **A new auth system rolled from scratch** — NextAuth + GitHub OAuth only (security best-practice 4). No hand-rolled JWT/session crypto.
+- **Wildcard `*` CORS in production** (security best-practice 6) — explicit allowed origin only.
+- **Turning on the hosted sandbox without its §11b.1 real-container egress test + a per-tenant sandbox-minute budget** (§5d rules 5 + 7).
+- **Deploying without the §7.9 deploy-checklist gate green** (RLS active, secrets in platform env, rate limits on, backups + tested restore, isolation suite green).
 
 ## 11b. Known Tricky Areas (Vibe-Coding Warnings)
 
@@ -826,6 +885,8 @@ If something isn't working after 3 attempts:
 ---
 
 ## Revisions
+
+**Rev 7 (2026-06-02)** — **v3 (Cloud) planning applied.** Companion: new **[V3_PLAN.md](http://v3_plan.md/)** (full phased blueprint for the multi-tenant cloud build, mirroring V2_PLAN.md). **§5d added (NEW): Multi-Tenant Security & Data-Loss Floor** — non-negotiable: dual RLS + app-layer tenant isolation, secret blast-radius minimization, versioned-migration + backups + tested-restore data-loss prevention, per-tenant cost-attack budgets, secret-scrubbed observability, hosted-sandbox §11b.1. §1 phase status updated (v3 PLANNED, **Supabase Postgres** chosen, free-tier-first, local-Docker-now). §2 stack gains a v3 additions line (Supabase/Postgres+RLS, NextAuth GitHub OAuth, Vercel, Upstash, Sentry, `prisma migrate`). **§7.9 + §7.9a added: v3 testing strategy** (tenant-isolation tests as the v3 §11b-equivalent, RLS policy tests, auth E2E, secret-scrub, backup/restore drill, account-deletion cascade, per-tenant budget enforcement, hosted-sandbox §11b.1) + a blocking deploy-checklist gate + **anti-repeat guardrails codifying the v1.x/v2 lessons** (data-first isolation proof, real-service verification, push≠commit≠done, platform-assumptions-are-bugs). §11 Forbidden Patterns extended with v3 additions (no cross-tenant query, no `db push` in prod, no secret in logs, no hand-rolled auth, no wildcard CORS, no hosted-sandbox without §11b.1 + budget, no deploy without the gate). Two open questions resolved: cloud `/inspect` = **public + tight rate limits**; dep-freshness = **Mendel scans itself** (dogfood). Companion spec edits: PRD §12b (v3 product scope + F27–F35), TRD §15 (v3 technical specs), DESIGN §11c (v3 screen briefs S0 sign-in / S13 account / S14 runner).
 
 **Rev 6 (2026-05-29)** — **§5c.1 Contribution Eligibility Gate** added (non-negotiable). Triggered by real-world fallout: unsolicited automated PRs on `sindresorhus/execa` got the owner's account blocked. The agent must respect each repo's contribution norms — non-owned repos are report-only by default; PRs there require explicit acknowledgement AND a high bar (high confidence + passing verification); repos that already automate deps (Dependabot/Renovate) or whose CONTRIBUTING discourages drive-by PRs are hard-blocked. Implemented in `lib/agent/eligibility.ts` (pure `decideEligibility`/`gateSubmission` + `assessContributionEligibility` governance reader), gated in the runner, opt-in via New Scan checkbox + `externalContributionAck` API field. 17 new tests. Also (same day) PR-hygiene fixes: per-dep working-tree isolation (no cross-contaminated PRs) + surgical formatting-preserving `package.json` bump.
 

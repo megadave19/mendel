@@ -320,16 +320,31 @@ v2 deepens the engine **on the local machine** — no cloud rearchitecture (that
 
 **v2.4 — Ship & Prove:** updated Loom, case study v2 (eval-bench numbers are the headline), published bench baseline + per-release deltas, ≥ 3 more real PRs on harder/polyglot repos.
 
-## 12b. Features — v3 (Cloud, post v2)
+## 12b. Features — v3 (Cloud)
 
-Deferred from the original v2 roadmap because they couple Mendel to hosted infrastructure (external accounts + cost). v2 builds **cloud-ready** so v3 is a deployment project, not a rewrite (nullable `tenantId` columns, a `SandboxProvider` interface, out-of-process workers, no SQLite-specific queries).
+**PLANNED. Full build blueprint: [V3_PLAN.md](http://v3_plan.md/). Binding security rules: CLAUDE.md §5d.** Deferred from v2 because they couple Mendel to hosted infrastructure (external accounts + cost). v2 built **cloud-ready** so v3 is a deployment + multi-tenancy project, not a rewrite (nullable `tenantId`, a `SandboxProvider` interface, pure policy layers, out-of-process workers, no SQLite-specific queries).
 
-- Multi-tenant cloud deployment (Vercel)
-- Hosted sandbox behind the v2 `SandboxProvider` interface (E2B, Fly machines, Cloudflare Containers)
-- Proper auth (NextAuth.js + GitHub OAuth, replacing PAT-session)
-- Hosted multi-tenant database
-- Hosted cron/queue for continuous monitoring
-- HTTP/SSE MCP transport, Sentry, distributed cache
+**Product one-liner (v3):** *"Mendel, but as a hosted SaaS — sign in with GitHub, get a thorough, honestly-calibrated dependency analysis on your repos, and never see another user's data or token."*
+
+**Strategy — free-tier-first, no rewrite.** The cloud **control plane** (UI, multi-tenant DB, GitHub login, live `/inspect`, dashboards) runs at ~$0 on free tiers. The only real cost is the **hosted sandbox** (running untrusted OSS code), which is deferred — compute stays on **local Docker via a BYO-compute runner** until users + budget justify the spend.
+
+| # | Feature | What it is |
+|---|---|---|
+| F27 | GitHub OAuth login | NextAuth + GitHub, replacing PAT-session; httpOnly session cookies; explicit scope disclosure |
+| F28 | Multi-tenant data + RLS | Every row tenant-owned; **dual isolation** (Postgres Row-Level Security + Prisma app-layer scoping) so no user can ever see another's data |
+| F29 | Cloud deploy + headers | Vercel; CSP/HSTS/X-Frame/CORS hardening |
+| F30 | Hosted Postgres + DLP | **Supabase Postgres** + connection pooling + automated backups/PITR + tested restore runbook |
+| F31 | `/inspect` live | F22's pure-analysis surface runs in the cloud — **no sandbox, free** — the public, rate-limited demo |
+| F32 | Local-runner bridge | `RemoteSandboxProvider`: cloud queues a scan, the user's `pnpm runner` executes it in their **local Docker** and pushes results back — full scans, free, PAT stays on the user's machine |
+| F33 | Hosted sandbox (opt-in, paid) | E2B/Fly behind the v2 `SandboxProvider`, with §11b.1 egress test + per-tenant sandbox-minute budget |
+| F34 | Observability + abuse protection | Sentry (secret-scrubbed) · per-tenant rate limits + LLM/sandbox budgets · tenant-scoped audit log |
+| F35 | Ship & prove | Security audit · Loom (cloud) · case study · multi-tenant real-scan proof |
+
+**Release sequencing:** v3.0 control plane (F27–F31, F34 core — free) → v3.1 BYO-compute scans (F32 — free) → v3.2 hosted sandbox (F33 — paid, opt-in) → v3.3 ship & prove (F35).
+
+**Resolved product decisions (2026-06):** cloud `/inspect` is **public + rate-limited** (max marketing reach, abuse-controlled); dependency freshness on Mendel's own repo is handled by **Mendel scanning itself** (dogfood), not Dependabot.
+
+**Out of scope for v3 (honest boundaries):** no user file uploads (smallest attack surface); no roll-your-own auth; no cross-tenant features.
 
 ## 13. UX / UI Design Language
 

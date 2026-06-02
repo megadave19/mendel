@@ -756,15 +756,28 @@ pnpm test:docker  # real-container sandbox tests (per-language images, Phase C)
 
 Per-language Docker images (`node:20`, `python:3.13-slim`, `golang:1.x`, `rust:1.x-slim`) built on first use. Workers and the sandbox sit behind interfaces (`SandboxProvider`, shared `runScan`) so v3 can host them unchanged. Demo: local + Loom + real PR URLs (now polyglot).
 
-### v3 — Cloud Deployment (post v2)
+### v3 — Cloud Deployment (PLANNED)
 
-- Hosted sandbox behind the v2 `SandboxProvider` interface (E2B, [Fly.io](http://Fly.io) machines, Cloudflare Containers)
-- Vercel deploy
-- Proper auth (NextAuth.js + GitHub OAuth, replacing PAT-session)
-- Multi-tenant data model (the nullable `tenantId` columns added in v2 populate here)
-- Hosted DB
-- Hosted cron/queue for monitoring; HTTP/SSE MCP transport
-- Sentry, distributed cache
+**Full blueprint: [V3_PLAN.md](http://v3_plan.md/). Binding security: CLAUDE.md §5d. Multi-tenant SaaS, free-tier-first, no rewrite.**
+
+**15.1 Data model — multi-tenancy + isolation (F28).** Every model's `tenantId` (nullable seam in v2) flips to **NOT NULL**, FK → new `Tenant` (`{ id, githubUserId, githubLogin, createdAt }`). Isolation is **dual, both required**:
+- **DB layer — Postgres Row-Level Security.** Each tenant-owned table gets a policy `USING (tenant_id = current_setting('app.tenant_id'))`. The app sets `app.tenant_id` per request (from the verified session) via a connection-scoped `SET LOCAL`. A forgotten `WHERE` cannot cross tenants — the DB refuses.
+- **App layer — Prisma extension** injects `tenantId` into every `where` + `create`. First line of defense; RLS is the backstop.
+New models: `RunnerToken` (F32, tenant-scoped, hashed, revocable); `AuditLog` (extends `AgentLog`, tenant-scoped event trail).
+
+**15.2 Migrations.** Graduate from `prisma db push` → **versioned `prisma migrate`** (prod schema history must be auditable + reversible). Datasource `sqlite` → `postgresql`. Backup taken pre-migrate.
+
+**15.3 Auth (F27).** NextAuth.js + GitHub OAuth provider. Session in httpOnly+Secure+SameSite=Lax cookie. First login creates the `Tenant`. OAuth/PAT tokens AES-256-GCM at rest, never returned. Per-IP rate limit on the callback.
+
+**15.4 Compute — `SandboxProvider` resolution (F32/F33).** The v2 interface gets two impls:
+- `RemoteSandboxProvider` (F32, default): enqueues the scan to a tenant-scoped queue. A local `pnpm runner` long-polls *its own* tenant's queue, runs the scan in **local Docker** (existing executor unchanged), streams results back over the existing SSE shape. PAT can stay on the runner — never in the cloud — for clone/PR ops.
+- `HostedSandboxProvider` (F33, opt-in, paid): E2B / Fly machines, same three-phase contract (install/bridge+iptables, test/none, smoke/none), same per-language images, **same §11b.1 real-container egress test on the hosted provider before trust.** Per-tenant sandbox-minute budget hard cap.
+
+**15.5 Infra.** Vercel hosting + `vercel.ts` config + security-header middleware (CSP/HSTS/X-Frame DENY/nosniff/Referrer/no X-Powered-By) + explicit-origin CORS. **Supabase Postgres** + pooled connections + automated backups/PITR. Vercel Cron / hosted queue for the monitor worker (moves from `worker/monitor.ts` unchanged behind the pure `decideFire` scheduler). Upstash Redis / Vercel KV for per-tenant rate-limit + budget counters. Sentry (secret-scrubbed breadcrumbs). HTTP/SSE MCP transport (the stdio server's tool registry reused unchanged behind an HTTP handler — but **always session-gated; never unauthenticated**, per §5d).
+
+**15.6 `/inspect` live (F31).** F22 orchestrator is pure analysis (no clone, no sandbox) → runs directly in a Vercel function. Public + rate-limited (10/min/IP) + LLM-token-budgeted.
+
+**15.7 Testing.** Tenant-isolation suite against **real Postgres** (two seeded tenants, RLS + app-layer both proven) is the v3 §11b-equivalent + stop-the-line. Plus RLS policy tests, auth E2E, secret-scrub, account-deletion cascade, per-tenant budget enforcement, backup/restore drill, hosted-sandbox §11b.1. Detail: CLAUDE.md §7.9 / V3_PLAN.md §9.
 
 ## 16. Local Dev Setup
 
