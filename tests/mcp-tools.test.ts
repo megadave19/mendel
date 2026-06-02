@@ -26,6 +26,7 @@ vi.mock('@/lib/agent/inspect', () => ({ inspectApi: vi.fn() }))
 import {
   ALL_TOOLS,
   invokeTool,
+  defineTool,
   healthTool,
   scanListTool,
   scanGetTool,
@@ -38,6 +39,7 @@ import {
   type McpPrisma,
   type ToolIo,
 } from '@/lib/mcp/tools'
+import { z } from 'zod'
 
 // ── Fake deps ────────────────────────────────────────────────────────────────
 
@@ -145,13 +147,18 @@ describe('invokeTool — validation', () => {
   })
 
   it("catches handler exceptions and returns {ok:false, error} (never bubbles to the SDK)", async () => {
-    const throwingTool = {
-      ...healthTool,
+    // After the v2.2.x refactor the handler is closed inside `invoke`,
+    // so we construct a throwing tool via defineTool rather than
+    // spreading + overriding a field that no longer exists on the
+    // public RegisteredTool shape.
+    const throwingTool = defineTool({
       name: 'mendel.throws',
+      description: 'throws to verify the catch-bubble contract — not registered',
+      inputSchema: z.object({}).strict(),
       handler: async () => {
         throw new Error('boom')
       },
-    }
+    })
     const out = await invokeTool(throwingTool, {}, makeDeps())
     expect(out.ok).toBe(false)
     if (!out.ok) expect(out.error).toBe('boom')

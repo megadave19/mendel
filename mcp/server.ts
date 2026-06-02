@@ -26,11 +26,7 @@ import type { ZodRawShape } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { db } from '@/lib/db'
-import { ALL_TOOLS, invokeTool, type ToolDeps, type AnyTool } from '@/lib/mcp/tools'
-
-// AnyTool is referenced in JSDoc + transitively via the `tool` param's
-// inferred shape — keeping the explicit import documents the type.
-void (null as unknown as AnyTool)
+import { ALL_TOOLS, type ToolDeps } from '@/lib/mcp/tools'
 
 const SERVER_NAME = 'mendel-mcp'
 const SERVER_VERSION = '0.1.0'
@@ -78,7 +74,7 @@ export async function startMcpServer(opts: StartServerOptions = {}): Promise<Mcp
         inputSchema: extractRawShape(tool.inputSchema),
       },
       async (rawInput: unknown) => {
-        const result = await invokeTool(tool, rawInput, deps)
+        const result = await tool.invoke(rawInput, deps)
         if (result.ok) {
           return {
             content: [

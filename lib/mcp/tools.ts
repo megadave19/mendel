@@ -70,20 +70,67 @@ export const defaultToolIo: ToolIo = {
 
 // ── Tool type ───────────────────────────────────────────────────────────────
 
-/** A registered tool. The handler returns a JSON-serializable result;
- *  the server wrapper marshals it into the MCP `CallToolResult` shape. */
-export interface ToolRecord<I> {
+/** A registered tool with the input type hidden behind an existential.
+ *
+ * v2.2.x polish (refactor): the previous `ToolRecord<I>` was generic in
+ * its handler's input type, which is CONTRAVARIANT — so a heterogeneous
+ * registry couldn't be typed as `ToolRecord<unknown>[]` (a `ToolRecord<X>`
+ * is not a subtype of `ToolRecord<unknown>` when handlers differ).
+ * The previous workaround was `AnyTool = ToolRecord<any>` + an eslint-
+ * disable. Both are gone now.
+ *
+ * The shape below hides the input type INSIDE the closure of `invoke`.
+ * Each call to `defineTool(spec)` returns this non-generic interface,
+ * with the schema preserved as `z.ZodTypeAny` for SDK introspection
+ * (the server wrapper reads `_def.shape()` for ZodObject schemas to
+ * generate per-field JSON-Schema descriptions). The handler's typed
+ * input lives only inside the closure — never on the public surface.
+ */
+export interface RegisteredTool {
   name: string
   description: string
-  inputSchema: z.ZodType<I>
-  handler: (input: I, deps: ToolDeps) => Promise<unknown>
+  /** Exposed for SDK introspection only. The validation itself runs
+   *  inside `invoke` via the closed-over schema. */
+  inputSchema: z.ZodTypeAny
+  /** Validate + dispatch the call. Returns the success/error envelope
+   *  the server marshals into the MCP `CallToolResult` shape. */
+  invoke: (
+    rawInput: unknown,
+    deps: ToolDeps,
+  ) => Promise<{ ok: true; result: unknown } | { ok: false; error: string }>
 }
 
-/** Build a typed `ToolRecord` while preserving the schema's inferred type. */
-export function defineTool<S extends z.ZodType>(
-  spec: Omit<ToolRecord<z.infer<S>>, 'inputSchema'> & { inputSchema: S },
-): ToolRecord<z.infer<S>> {
-  return spec
+/** Build a `RegisteredTool` while preserving the schema's inferred input
+ *  type INSIDE the handler. The returned tool is non-generic; callers
+ *  never see the input type leak to the registry. */
+export function defineTool<S extends z.ZodTypeAny>(spec: {
+  name: string
+  description: string
+  inputSchema: S
+  handler: (input: z.infer<S>, deps: ToolDeps) => Promise<unknown>
+}): RegisteredTool {
+  return {
+    name: spec.name,
+    description: spec.description,
+    inputSchema: spec.inputSchema,
+    invoke: async (rawInput, deps) => {
+      const parsed = spec.inputSchema.safeParse(rawInput ?? {})
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: `input validation failed for ${spec.name}: ${parsed.error.issues
+            .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+            .join('; ')}`,
+        }
+      }
+      try {
+        const result = await spec.handler(parsed.data as z.infer<S>, deps)
+        return { ok: true, result }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }
 }
 
 // ── Tool: mendel.health ─────────────────────────────────────────────────────
@@ -487,14 +534,13 @@ export const monitorListTool = defineTool({
 
 // ── The registry ────────────────────────────────────────────────────────────
 
-/** Erased-input ToolRecord — handler input is checked at runtime via the
- *  Zod schema, so the static type can be widened to satisfy the
- *  contravariance constraint when storing heterogeneous tools in a list. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyTool = ToolRecord<any>
+/** Back-compat alias for callers that imported `AnyTool` before the
+ *  v2.2.x refactor. `AnyTool` is now exactly `RegisteredTool` — the
+ *  existential hides the input-type variance issue entirely. */
+export type AnyTool = RegisteredTool
 
 /** The frozen list of all tools the MCP server exposes. */
-export const ALL_TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
+export const ALL_TOOLS: ReadonlyArray<RegisteredTool> = Object.freeze([
   // Read-only (sub-phase 1)
   healthTool,
   scanListTool,
@@ -518,31 +564,16 @@ function safeParse(raw: string | null | undefined): unknown {
   }
 }
 
-/** Validate input through a tool's schema, then invoke its handler. The
- *  server wrapper uses this; tests use it to verify routing + validation
- *  without the SDK in the loop. Returns `{ ok: false, error }` on
- *  validation failure so the server can map it to a clean MCP error.
+/** Validate input through a tool's schema, then invoke its handler.
  *
- *  Accepts any tool type (`AnyTool`) because handlers are heterogeneous —
- *  runtime safety comes from `tool.inputSchema.safeParse` below. */
+ *  v2.2.x polish — kept as a thin pass-through for back-compat with
+ *  existing tests + the server wrapper. The actual work happens inside
+ *  `tool.invoke` (the closure from `defineTool`). Future callers should
+ *  prefer calling `tool.invoke(rawInput, deps)` directly. */
 export async function invokeTool(
-  tool: AnyTool,
+  tool: RegisteredTool,
   rawInput: unknown,
   deps: ToolDeps,
 ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
-  const parsed = tool.inputSchema.safeParse(rawInput ?? {})
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: `input validation failed for ${tool.name}: ${parsed.error.issues
-        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
-        .join('; ')}`,
-    }
-  }
-  try {
-    const result = await tool.handler(parsed.data, deps)
-    return { ok: true, result }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
-  }
+  return tool.invoke(rawInput, deps)
 }
