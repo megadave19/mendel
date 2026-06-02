@@ -125,3 +125,22 @@ test('visual — scan demo (Live Console)', async ({ page }) => {
     ],
   })
 })
+
+// v2.2.x polish — monorepo S4 visual baseline. /scan/demo-monorepo
+// surfaces the F21 workspace UI (workspace label + per-package mini-
+// stats). The demo mock returns workspaceKind: 'pnpm' + 3 stable
+// packages so the snapshot is reproducible.
+test('visual — scan demo (Live Console, monorepo)', async ({ page }) => {
+  await page.goto('/scan/demo-monorepo', { waitUntil: 'networkidle' })
+  await page.waitForTimeout(8_000)
+  await expect(page).toHaveScreenshot('scan-demo-monorepo.png', {
+    fullPage: true,
+    maxDiffPixelRatio: 0.06,
+    mask: [
+      page.getByRole('img', { name: /bones the maintainer/i }),
+      page.locator('svg[role="img"]'),
+      page.locator('svg[aria-hidden="true"]'),
+      page.locator('[class*="terminal"]'),
+    ],
+  })
+})

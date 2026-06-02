@@ -19,6 +19,9 @@ import type { IssueVM, LogLine, Phase } from '@/components/phase-d/types'
 import type { DepNode } from '@/components/phase-d/DepGraph'
 
 const DEMO_ID = 'demo'
+/** v2.2.x polish — monorepo flavor of the demo mock so the F21
+ *  workspace UI lane has its own visual baseline. */
+const DEMO_MONOREPO_ID = 'demo-monorepo'
 
 const PHASE_MAP: Record<AgentPhase, Phase> = {
   DETECT: 'SCAN',
@@ -271,7 +274,9 @@ function useRealScanView(id: string): MockScanState {
  */
 export function useScanView(id: string): MockScanState {
   const isDemo = id === DEMO_ID
-  const mock = useMockScan(isDemo)
-  const real = useRealScanView(isDemo ? '' : id)
-  return isDemo ? mock : real
+  const isMonorepoDemo = id === DEMO_MONOREPO_ID
+  const isAnyDemo = isDemo || isMonorepoDemo
+  const mock = useMockScan(isAnyDemo, isMonorepoDemo)
+  const real = useRealScanView(isAnyDemo ? '' : id)
+  return isAnyDemo ? mock : real
 }

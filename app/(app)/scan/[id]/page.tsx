@@ -62,14 +62,20 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   const toast = useToast()
   // Demo id → scripted mock; any real scan id → live SSE stream (same shape).
   const scan = useScanView(id)
-  const isDemo = id === 'demo'
+  // v2.2.x polish — `demo-monorepo` joins `demo` as a non-network-driven
+  // mock route. The page treats both as "demo" for gating purposes (no
+  // real cancel/export); useScanView swaps in the right mock flavor.
+  const isDemo = id === 'demo' || id === 'demo-monorepo'
   const depNodes = scan.deps
   const { setPhase } = useMascotPhase()
 
   // Fix #7 (audit-2): show repo name in the status strip instead of the cuid.
   const [repoName, setRepoName] = useState<string | null>(null)
   useEffect(() => {
-    if (isDemo) { setRepoName('demo · mock scan'); return }
+    if (isDemo) {
+      setRepoName(id === 'demo-monorepo' ? 'demo · monorepo mock scan' : 'demo · mock scan')
+      return
+    }
     fetch(`/api/scans/${id}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { repoUrl?: string } | null) => d?.repoUrl && setRepoName(repoNameFromUrl(d.repoUrl)))

@@ -116,7 +116,18 @@ export interface MockScanState {
   }>
 }
 
-export function useMockScan(autoStart = true): MockScanState {
+/** v2.2.x polish — opt-in monorepo flavor for the demo mock. When `true`
+ *  the returned scan reports `workspaceKind: 'pnpm'` + a stable three-
+ *  package list. Drives the new `/scan/demo-monorepo` visual baseline so
+ *  Phase D's monorepo UI (per-package chips, workspace label) has its
+ *  own snapshot. */
+const MOCK_MONOREPO_PACKAGES = [
+  { id: 'pkg-app', name: '@mendel-demo/app', dir: 'apps/app', depsCount: 24, issuesFound: 2, scanned: true, skipReason: null },
+  { id: 'pkg-ui', name: '@mendel-demo/ui', dir: 'packages/ui', depsCount: 18, issuesFound: 1, scanned: true, skipReason: null },
+  { id: 'pkg-utils', name: '@mendel-demo/utils', dir: 'packages/utils', depsCount: 9, issuesFound: 0, scanned: true, skipReason: null },
+] as const
+
+export function useMockScan(autoStart = true, monorepo = false): MockScanState {
   const [phase, setPhase] = useState<Phase>('SCAN')
   const [lines, setLines] = useState<LogLine[]>([])
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
@@ -200,5 +211,23 @@ export function useMockScan(autoStart = true): MockScanState {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  return { phase, lines, activeNodeId, elapsedMs, depsScanned, issuesFound, issues, deps: MOCK_DEPS, running, done, replay, smokeRequested: false, workspaceKind: null, packages: [] }
+  return {
+    phase,
+    lines,
+    activeNodeId,
+    elapsedMs,
+    depsScanned,
+    issuesFound,
+    issues,
+    deps: MOCK_DEPS,
+    running,
+    done,
+    replay,
+    smokeRequested: false,
+    // v2.2.x polish — when the demo route opted into monorepo flavor
+    // we surface a stable pnpm workspace + 3 packages so the visual
+    // baseline can cover that UI lane.
+    workspaceKind: monorepo ? 'pnpm' : null,
+    packages: monorepo ? [...MOCK_MONOREPO_PACKAGES] : [],
+  }
 }
