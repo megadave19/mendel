@@ -122,6 +122,33 @@ describe.skipIf(!ENABLE)('Go apidiff — real container (§11b.1)', () => {
     expect(() => JSON.stringify(out)).not.toThrow()
   }, 5 * 60 * 1000) // go get + apidiff for two versions = up to ~120s on cold cache
 
+  it("handles a MULTI-PACKAGE Go module (golang.org/x/sync — errgroup/semaphore/singleflight/syncmap) without crashing", async () => {
+    // v2.2.x polish — pin multi-package support. apidiff -m walks every
+    // sub-package of a module internally (verified: `apidiff -m -w` on
+    // x/sync v0.5.0 produces a 6707-byte API artifact that encodes all
+    // four sub-packages). The wrapper inherits that natively — it just
+    // calls `apidiff -m -w` once per version pair and trusts apidiff to
+    // walk packages.
+    //
+    // x/sync v0.5.0 → v0.10.0 is a stable utility-library bump with no
+    // public API changes — so the honest expected output is ZERO
+    // findings. The pin asserts: the call succeeds, the tier is right,
+    // the wrapper does NOT fall back to honest-error (a non-empty
+    // unanalyzableSymbols list would mean apidiff broke on
+    // multi-package walking).
+    const MULTI_PKG_MOD = 'golang.org/x/sync'
+    const out = await runApidiff(MULTI_PKG_MOD, 'v0.5.0', 'v0.10.0')
+    expect(out.tier).toBe('apidiff')
+    // Honest contract: a stable bump should produce ZERO unanalyzable
+    // symbols. A non-empty list would mean apidiff stumbled on a
+    // sub-package (the failure shape we'd want to know about).
+    expect(out.unanalyzableSymbols).toEqual([])
+    // The four arrays all parse — no schema drift.
+    expect(Array.isArray(out.removedExports)).toBe(true)
+    expect(Array.isArray(out.signatureChanges)).toBe(true)
+    expect(Array.isArray(out.newDeprecations)).toBe(true)
+  }, 5 * 60 * 1000)
+
   it("the Go adapter wraps apidiff output into a valid SemanticDiff (round-trip)", async () => {
     const diff = await goAdapter.semanticDiff(MOD, FROM, TO)
     expect(diff.coveragePercent).toBe(100) // apidiff is exhaustive within scope

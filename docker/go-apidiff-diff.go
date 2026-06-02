@@ -25,12 +25,20 @@
 //	  "unanalyzableSymbols": [{"symbol": "...", "reason": "..."}]
 //	}
 //
-// Scope: this wrapper handles SINGLE-PACKAGE modules — it treats the
-// module path as the import path. Multi-package modules (`module/...`)
-// would require enumerating packages via `go list`, diffing each, and
-// merging — tracked as a v2.2.x follow-on. When the wrapper can't
-// resolve the module-as-package, it surfaces the failure honestly
-// instead of pretending no breaking changes were found (§5b).
+// Scope: this wrapper invokes `apidiff -m -w` once per version pair.
+// `apidiff -m` walks every sub-package of a module internally — so
+// multi-package modules ARE supported natively (verified for v2.2.x
+// polish: `apidiff -m -w` on golang.org/x/sync v0.5.0 produces a
+// 6707-byte API artifact encoding all four sub-packages
+// errgroup/semaphore/singleflight/syncmap). Pinned by
+// tests/go-apidiff-container.test.ts's multi-package case.
+//
+// Honest known limitation: apidiff's own loader chokes on some modules
+// whose transitive deps have empty package names (e.g.,
+// golang.org/x/tools fails with "invalid package name: \"\"" loading
+// github.com/yuin/goldmark). When that happens this wrapper surfaces
+// the apidiff exit status + stderr in `unanalyzableSymbols` rather
+// than pretending no breaking changes were found (§5b).
 package main
 
 import (
