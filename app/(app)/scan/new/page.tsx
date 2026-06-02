@@ -81,11 +81,14 @@ function relTime(iso?: string): string {
   return `${Math.floor(hr / 24)}d ago`
 }
 
+// v2.3 scan scope — kept honest with what the runner actually does.
+// (Was stale v1.0 copy: claimed "no monorepos" + "TypeScript preferred",
+//  both false since v2.1 monorepo support + v2.2 polyglot.)
 const CONSTRAINTS = [
-  'Public repositories only',
-  'Single-package repos (no monorepos)',
-  'TypeScript projects preferred',
-  'Max 3 deps patched per scan',
+  'Public repositories',
+  'TypeScript · Python · Go · Rust',
+  'Monorepos supported (pnpm · yarn · npm · lerna · nx · turbo)',
+  'Up to 3 deps patched per scan',
 ]
 
 interface JourneyStep { phase: string; what: string; sub: string; accent: string }
@@ -356,15 +359,16 @@ export default function NewScanPage() {
             </PanelFrame>
           </form>
 
-          {/* Constraints — real bordered amber warning panel */}
-          <div style={{ border: '1px solid var(--accent-warning)', background: 'rgba(255,184,77,0.05)', padding: '1rem 1.1rem' }}>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent-warning)', marginBottom: '0.625rem' }}>
-              ⚠ Constraints · v1.0
+          {/* Scan scope — what Mendel supports today (v2.3). Informational,
+              not a warning, so it reads cyan/secondary not amber. */}
+          <div style={{ border: '1px solid var(--border-strong)', background: 'var(--bg-1)', padding: '1rem 1.1rem' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent-secondary)', marginBottom: '0.625rem' }}>
+              ◇ Scan scope · v2.3
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 1rem' }}>
               {CONSTRAINTS.map((c) => (
                 <p key={c} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.4rem' }}>
-                  <span style={{ color: 'var(--accent-warning)' }}>·</span> {c}
+                  <span style={{ color: 'var(--accent-secondary)' }}>·</span> {c}
                 </p>
               ))}
             </div>
@@ -628,9 +632,21 @@ function EligibilityPreviewBlock(props: {
             {' '}— {linkableIssue.title.slice(0, 80)}
           </p>
         )}
-        <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          {reason}
-        </p>
+        {/* Verdict line. For a clean EXTERNAL repo we do NOT show the flat
+            "report only (no PR)" server reason — it contradicts the ack box
+            below (which CAN enable a PR) and confused users. Instead we show
+            an honest warning that a clean check is not an invitation, and the
+            ack is opt-in at your own risk. Owned/blocked keep their final
+            server reason (those are accurate + terminal). */}
+        {decision === 'external' && ackNeeded ? (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--accent-warning)', lineHeight: 1.5 }}>
+            ⚠ You don&apos;t maintain this repo. Mendel found <strong>no blockers</strong> (no Dependabot/Renovate · no CONTRIBUTING red-flags) — but a clean check is <strong>not</strong> an invitation. Acknowledge below <strong>only</strong> if you&apos;ve confirmed the maintainer welcomes dependency PRs. You do so <strong>at your own risk</strong>.
+          </p>
+        ) : (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            {reason}
+          </p>
+        )}
       </div>
 
       {/* Conditional ack — ONLY shown when ticking it would actually change
@@ -645,11 +661,11 @@ function EligibilityPreviewBlock(props: {
             style={{ marginTop: '0.15rem', flexShrink: 0, accentColor: tone.color }}
           />
           <span>
-            I&apos;ve read this repo&apos;s CONTRIBUTING &amp; Code of Conduct — it <strong>welcomes</strong> dependency PRs.{' '}
-            <span style={{ color: 'var(--text-muted)' }}>
+            I&apos;ve read this repo&apos;s CONTRIBUTING &amp; Code of Conduct — it <strong>welcomes</strong> dependency PRs, and I take responsibility for this contribution.{' '}
+            <span style={{ color: externalAck ? 'var(--accent-warning)' : 'var(--text-muted)' }}>
               {externalAck
-                ? 'Mendel will open a PR if the upgrade clears high confidence + passing verification.'
-                : 'Leave unchecked → Mendel analyzes and reports, but won’t open a PR.'}
+                ? '→ PR ENABLED (at your own risk): Mendel will open a PR only for upgrades that clear high confidence + passing verification.'
+                : '→ Unchecked = report only: Mendel analyzes and reports, but opens no PR.'}
             </span>
           </span>
         </label>
