@@ -30,19 +30,42 @@
 
 import { z } from 'zod'
 import type { PrismaClient } from '@prisma/client'
+import { runScan } from '@/lib/agent/runner'
+import { encrypt } from '@/lib/crypto'
+import { inspectApi } from '@/lib/agent/inspect'
 
 // ── Dep bundle injected by the server wrapper ───────────────────────────────
 
 /**
- * Minimum Prisma surface the registry touches. Sub-phase 1 stays read-
- * only so only finders + reads are needed. Tests pass a fake.
+ * Minimum Prisma surface the registry touches. Sub-phase 2 widens the
+ * read-only set to cover monitorSchedule (read-only) and adds scan.create
+ * for the new scan.start tool. Tests pass a fake.
  */
-export type McpPrisma = Pick<PrismaClient, 'scan' | 'issue' | 'inspection'>
+export type McpPrisma = Pick<PrismaClient, 'scan' | 'issue' | 'inspection' | 'monitorSchedule'>
+
+/** IO seams the action tools touch. Injectable so tests can replace
+ *  them with fakes (no real runScan, no real inspectApi, no real
+ *  crypto/env). The signatures mirror the runtime imports. */
+export interface ToolIo {
+  runScan: typeof runScan
+  inspectApi: typeof inspectApi
+  encrypt: typeof encrypt
+}
 
 export interface ToolDeps {
   db: McpPrisma
   /** ISO timestamp generator — injectable for deterministic tests. */
   now: () => Date
+  /** Action IO — defaults to the real imports at runtime; tests inject fakes. */
+  io?: ToolIo
+}
+
+/** Default IO bundle — used when ToolDeps.io is omitted. Server uses
+ *  this at runtime; tests pass their own fakes via ToolDeps.io. */
+export const defaultToolIo: ToolIo = {
+  runScan,
+  inspectApi,
+  encrypt,
 }
 
 // ── Tool type ───────────────────────────────────────────────────────────────
@@ -240,6 +263,228 @@ export const inspectionListTool = defineTool({
   },
 })
 
+// ── Tool: mendel.scan.start (ACTION) ─────────────────────────────────────────
+//
+// Start a headless scan from an MCP client. Mirrors POST /api/scans:
+//   1. Validate inputs (Zod)
+//   2. Encrypt PAT (AES-256-GCM via @/lib/crypto)
+//   3. Insert Scan row with status='queued'
+//   4. Fire-and-forget runScan in the background
+//   5. Return { scanId } immediately
+//
+// Security:
+//   - The plaintext PAT enters in `input.pat` and is encrypted IMMEDIATELY
+//     before any persistence. The response NEVER includes the PAT.
+//   - The runner's eligibility gate (§5c.1) runs unchanged inside runScan
+//     — a caller cannot bypass it via MCP because runScan is the same
+//     function the UI calls.
+//   - Per CLAUDE.md §5 r17: validation at the boundary; the encrypted PAT
+//     is the only PAT-shaped value that ever lives in the DB.
+
+const ScanStartInput = z.object({
+  repoUrl: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith('https://github.com/'), 'repoUrl must be an https://github.com/ URL'),
+  pat: z.string().min(1).max(200),
+  /** Optional confidence threshold override per scan (40–100). */
+  confidenceThreshold: z.number().int().min(40).max(100).optional(),
+  /** v2.0 / F20 — opt-in Phase C smoke test. */
+  smokeTest: z.boolean().optional(),
+  /** §5c.1 — acknowledge external-contribution norms. Default false. */
+  externalContributionAck: z.boolean().optional(),
+}).strict()
+
+export const scanStartTool = defineTool({
+  name: 'mendel.scan.start',
+  description:
+    'Start a headless scan of a GitHub repo. The PAT is encrypted at rest immediately; never logged, never returned. The runner runs eligibility (§5c.1) + verification gates internally — a caller cannot bypass them via MCP. Returns { scanId } immediately; the scan runs in the background.',
+  inputSchema: ScanStartInput,
+  handler: async (input, deps) => {
+    const io = deps.io ?? defaultToolIo
+    const encryptedPat = io.encrypt(input.pat)
+
+    const created = await deps.db.scan.create({
+      data: {
+        repoUrl: input.repoUrl,
+        status: 'queued',
+        schemaVersion: '1.0',
+        encryptedPat,
+        smokeRequested: input.smokeTest ?? false,
+      },
+    })
+
+    // Fire-and-forget. The runner re-decrypts the PAT internally for
+    // every per-dep API call; we keep the in-memory plaintext alive for
+    // this request only because runScan also accepts it directly (same
+    // contract POST /api/scans uses).
+    void io
+      .runScan(created.id, input.repoUrl, input.pat, {
+        confidenceThreshold: input.confidenceThreshold,
+        smokeTest: input.smokeTest,
+        externalContributionAck: input.externalContributionAck,
+      })
+      .catch(() => {
+        // Runner errors are persisted to scan.errorMessage by the
+        // runner itself. We deliberately swallow here so the
+        // fire-and-forget doesn't surface a noisy unhandled-rejection.
+      })
+
+    return {
+      ok: true,
+      scanId: created.id,
+      status: 'queued',
+      repoUrl: created.repoUrl,
+      startedAt: created.startedAt?.toISOString() ?? null,
+    }
+  },
+})
+
+// ── Tool: mendel.inspect.run (ACTION) ────────────────────────────────────────
+//
+// Calls the F22 inspect orchestrator. F22 is purely analytical (no
+// repo, no PR, no sandbox); the structural cap (`applyInspectStructuralCap`)
+// inside inspectApi forces the bucket ≤ 'medium' so this can never produce
+// a 'high' confidence — matching the UI's contract.
+
+const InspectRunInput = z.object({
+  packageName: z.string().min(1).max(200),
+  fromVersion: z.string().min(1).max(64),
+  toVersion: z.string().min(1).max(64),
+  /** Optional PAT for the changelog signal. The plaintext is forwarded
+   *  to inspectApi and immediately consumed by GitHub API calls; never
+   *  persisted, never returned. */
+  pat: z.string().min(1).max(200).optional(),
+}).strict()
+
+export const inspectRunTool = defineTool({
+  name: 'mendel.inspect.run',
+  description:
+    'Run an F22 inspection on a package version pair (no repo clone, no sandbox, no PR). Returns a calibrated ApiReport with the structural cap applied (bucket ≤ medium — inspect mode can never reach high). PAT is optional and never persisted.',
+  inputSchema: InspectRunInput,
+  handler: async (input, deps) => {
+    const io = deps.io ?? defaultToolIo
+    const report = await io.inspectApi({
+      packageName: input.packageName,
+      fromVersion: input.fromVersion,
+      toVersion: input.toVersion,
+      pat: input.pat,
+    })
+    return { ok: true, report }
+  },
+})
+
+// ── Tool: mendel.automerge.get-verdict (READ honesty surface) ───────────────
+//
+// Returns the persisted §5c verdict for an issue. This is the LLM-facing
+// honesty surface that closes the §5c loop: every NO reason logged at
+// scan time is readable here, so a client can show the user EXACTLY why
+// auto-merge fired or skipped.
+
+const AutoMergeGetVerdictInput = z.object({
+  issueId: z.string().min(1).max(64),
+}).strict()
+
+export const autoMergeGetVerdictTool = defineTool({
+  name: 'mendel.automerge.get-verdict',
+  description:
+    'Read the persisted §5c auto-merge verdict for an issue (verdict: merged/skipped/failed/cancelled; full reasons array). Returns null when the gate did not run for this issue (e.g., no PR was opened). Pure read; never fires a merge.',
+  inputSchema: AutoMergeGetVerdictInput,
+  handler: async (input, deps) => {
+    const issue = await deps.db.issue.findUnique({
+      where: { id: input.issueId },
+      select: {
+        id: true,
+        scanId: true,
+        prUrl: true,
+        autoMerge: true,
+      },
+    })
+    if (!issue) {
+      return { ok: false, reason: `issue ${input.issueId} not found` }
+    }
+    if (!issue.autoMerge) {
+      return {
+        ok: true,
+        issueId: issue.id,
+        scanId: issue.scanId,
+        prUrl: issue.prUrl ?? null,
+        verdict: null,
+        note: 'auto-merge gate did not run for this issue (no PR opened, or scan predates F24)',
+      }
+    }
+    const parsed = (() => {
+      try {
+        return JSON.parse(issue.autoMerge) as Record<string, unknown>
+      } catch {
+        return { __parseError: true, raw: (issue.autoMerge ?? '').slice(0, 200) }
+      }
+    })()
+    return {
+      ok: true,
+      issueId: issue.id,
+      scanId: issue.scanId,
+      prUrl: issue.prUrl ?? null,
+      verdict: parsed,
+    }
+  },
+})
+
+// ── Tool: mendel.monitor.list (READ — F25 surface) ──────────────────────────
+//
+// Lists every MonitorSchedule row. CRITICAL: encryptedPat is NEVER
+// returned — the same hasPat:boolean contract the REST endpoint uses.
+
+const MonitorListInput = z
+  .object({
+    /** Optional filter: only enabled rows. */
+    enabledOnly: z.boolean().default(false),
+  })
+  .strict()
+
+export const monitorListTool = defineTool({
+  name: 'mendel.monitor.list',
+  description:
+    'List all F25 monitor schedules. The encryptedPat is NEVER included — only `hasPat: boolean` (matches the REST endpoint contract). Optional enabledOnly filter for active schedules.',
+  inputSchema: MonitorListInput,
+  handler: async (input, deps) => {
+    const where = input.enabledOnly ? { enabled: true } : {}
+    const rows = await deps.db.monitorSchedule.findMany({
+      where,
+      select: {
+        id: true,
+        repoFullName: true,
+        repoUrl: true,
+        cronExpression: true,
+        enabled: true,
+        encryptedPat: true, // selected here ONLY so we can compute hasPat; never returned
+        lastFiredAt: true,
+        lastErrorAt: true,
+        lastError: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    })
+    return {
+      schedules: rows.map((r) => ({
+        id: r.id,
+        repoFullName: r.repoFullName,
+        repoUrl: r.repoUrl,
+        cronExpression: r.cronExpression,
+        enabled: r.enabled,
+        hasPat: Boolean(r.encryptedPat),
+        lastFiredAt: r.lastFiredAt?.toISOString() ?? null,
+        lastErrorAt: r.lastErrorAt?.toISOString() ?? null,
+        lastError: r.lastError ?? null,
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      })),
+      total: rows.length,
+    }
+  },
+})
+
 // ── The registry ────────────────────────────────────────────────────────────
 
 /** Erased-input ToolRecord — handler input is checked at runtime via the
@@ -248,13 +493,18 @@ export const inspectionListTool = defineTool({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolRecord<any>
 
-/** The frozen list of all tools the MCP server exposes. Sub-phase 2 will
- *  extend with action tools (scan.start, automerge.preview, etc.). */
+/** The frozen list of all tools the MCP server exposes. */
 export const ALL_TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
+  // Read-only (sub-phase 1)
   healthTool,
   scanListTool,
   scanGetTool,
   inspectionListTool,
+  // Read + Action (sub-phase 2)
+  scanStartTool,
+  inspectRunTool,
+  autoMergeGetVerdictTool,
+  monitorListTool,
 ])
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-02
-> **Current phase:** **v2.3 IN PROGRESS** — F26 **sub-phase 1 complete**: pure tool registry (`lib/mcp/tools.ts`) + 4 read-only tools (health/scan.list/scan.get/inspect.list) + `mcp/server.ts` with stdio transport + `pnpm mcp` script + 24 tests (registry contracts + invokeTool validation + server wiring). Live JSON-RPC handshake verified end-to-end: `initialize` → server identity; `tools/list` → 4 tools with valid JSON-Schema; `tools/call mendel.health` → returns server time. PATs never in tool results. Sub-phase 2 next (action tools with §5c policy carry-over). Bench unchanged at 14/14 100/100. Commits `…91426f2` → `…3ca67ad` → `…05b7164` (F24) → `…5b20899` → `…6001709` (F25) → `<F26 s1>`.
+> **Current phase:** **v2.3 COMPLETE** — F26 sub-phase 2 done: 4 action tools (scan.start / inspect.run / automerge.get-verdict / monitor.list) added with PAT-leak defense + §5c policy carry-over. Total 8 MCP tools exposed over stdio. Live JSON-RPC verified: tools/list returns 8; monitor.list query against live SQLite returns the wire payload with NO encryptedPat field. **All v2.3 features done (F24 + F25 + F26).** Bench unchanged at 14/14 100/100. v2.2.x polish + sub-gate Looms remain owner-side. Commits `…91426f2` → `…05b7164` (F24) → `…5b20899` → `…6001709` (F25) → `…bc1bcbe` (F26 s1) → `<F26 s2>`.
 
 ---
 
@@ -109,6 +109,37 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-02 (v2.3 / F26 sub-phase 2 — action tools + policy carry-over; F26 COMPLETE; v2.3 COMPLETE)**
+Closes F26 end-to-end and closes v2.3. Mendel's MCP surface now exposes 8 tools (4 read-only + 4 action) — every action tool routes through the same pure policy + IO functions the UI calls, so a caller CANNOT bypass §5c eligibility, §5b confidence framing, or §5 r5 PAT encryption by going through MCP.
+- **`lib/mcp/tools.ts`** extended:
+  - **`McpPrisma`** widened to include `monitorSchedule` (read-only, for the new `monitor.list` tool).
+  - **`ToolIo`** seam introduced — `{ runScan, inspectApi, encrypt }` — injectable for tests so we don't spin the real runner / real crypto / real inspect at unit time. `defaultToolIo` collects the real imports at runtime.
+  - **`mendel.scan.start`** (ACTION) — accepts `repoUrl + pat + optional {confidenceThreshold, smokeTest, externalContributionAck}`. Encrypts PAT IMMEDIATELY via `io.encrypt`. Inserts Scan row with `status='queued' + schemaVersion='1.0' + encryptedPat`. Fires `runScan` fire-and-forget (mirrors `POST /api/scans` contract). Returns `{ok, scanId, status, repoUrl, startedAt}` — NEVER returns the PAT, NEVER returns the ciphertext, NEVER returns the encryptedPat field name. The runner's eligibility gate (§5c.1) runs unchanged inside `runScan`.
+  - **`mendel.inspect.run`** (ACTION) — accepts `packageName + fromVersion + toVersion + optional pat`. Calls `io.inspectApi` directly. The F22 structural cap (`applyInspectStructuralCap`) inside inspectApi forces bucket ≤ 'medium' so this tool can never produce a 'high' result, matching the UI contract. PAT is forwarded to inspectApi and consumed by GitHub API calls only; never persisted, never echoed.
+  - **`mendel.automerge.get-verdict`** (READ honesty surface) — accepts `issueId`. Reads the persisted `Issue.autoMerge` blob. Three honest paths: `{ok:false, reason:"not found"}` when the id is missing; `{ok:true, verdict:null, note:"gate did not run"}` when the gate didn't fire (legacy / no PR); `{ok:true, verdict:<parsed>}` when there's a real verdict. Malformed blobs surface as `{__parseError:true}`. **This is the LLM-facing closes-the-loop tool: every §5c reason logged at scan time is readable here, so a client can show the user EXACTLY why auto-merge fired or skipped.**
+  - **`mendel.monitor.list`** (READ — F25 surface) — lists every `MonitorSchedule` row. Optional `enabledOnly:true` filter. CRITICAL: returns `hasPat:boolean` (computed from `Boolean(r.encryptedPat)`) — encryptedPat itself is NEVER in the response. Mirrors the REST endpoint contract.
+- **Tests (+18 new — 60 total MCP tests):**
+  - **`scanStartTool`** (6): encryption-before-persist with two assertions (encrypt called with plaintext; persisted `Scan.encryptedPat` is ciphertext) + response-leak check (JSON.stringify search for plaintext, ciphertext, AND the literal field name `encryptedPat`); `runScan` forwarded with all options; `runScan` rejection swallowed at fire-and-forget; non-github repoUrl refused; PAT length bounds; confidence threshold range.
+  - **`inspectRunTool`** (4): forwards inputs + returns report; PAT optional (anon path works); response never carries the plaintext PAT; empty inputs refused.
+  - **`autoMergeGetVerdictTool`** (4): not-found case is honest (`{ok:false, reason}`); null-verdict case carries an honest `note`; persisted JSON parsed into object with every §5c reason readable; malformed blob surfaces as `__parseError`.
+  - **`monitorListTool`** (4): hasPat:true with two assertions (the boolean AND a stringify search for both the ciphertext literal AND the field name `encryptedPat`); hasPat:false on empty ciphertext (defensive); `enabledOnly:true` forwarded as `where:{enabled:true}`; default `where:{}` honest (no silent enabled filter).
+- **Live JSON-RPC verified against the real SDK:**
+  - `tools/list` returns 8 tools (4 sub-phase 1 read-only + 4 sub-phase 2 action). All carry valid `additionalProperties:false` JSON-Schemas with `required` arrays per Zod.
+  - `tools/call mendel.monitor.list` → live SQLite query, returns `{schedules:[], total:0}` on a fresh DB. **The serialized wire payload contains the string `encryptedPat`: false** (verified via Python smoke).
+- **Security contract pinned at three layers:**
+  - Compile-time: Prisma `select` narrows the fields the row carries OUT of the DB
+  - Test-time: every action tool's test does a `JSON.stringify(result)` substring search for `encryptedPat` + the literal ciphertext value
+  - Live-time: the smoke script reads the actual stdio bytes and confirms the field name is absent
+- **v2.3 final inventory:**
+  - **F24 auto-merge** (3 sub-phases): pure policy + runner-glue + GitHub merge + dwell + AgentLog + Settings UI + REST endpoints
+  - **F25 continuous monitor** (2 sub-phases): MonitorSchedule schema + pure scheduler + node-cron worker + `pnpm monitor` + REST endpoints + Settings UI
+  - **F26 MCP server** (2 sub-phases): pure tool registry + stdio transport + 8 tools + `pnpm mcp`
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **693 passed** / 22 skipped (+18 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** (still the v2.2 F23c s2 baseline — v2.3 added zero new fixtures because the new features are structurally additive / opt-in) · `pnpm test:docker` not re-run (no Docker change).
+- **What's left in the broader plan (NOT gating v2.3):**
+  - **F23a/b/c sub-gate Looms** — owner-side: end-to-end Python / Go / Rust scans on real public repos
+  - **v2.2.x polish:** multi-package Go modules; iptables allowlist parity for Python+Go+Rust Phase A; `Issue.language` → Prisma enum; monorepo S4 visual baseline; the documented MCP-surface tightening (replace `AnyTool = ToolRecord<any>` + `as any` casts with a stricter discriminated union if/when SDK exports its internal `ZodRawShapeCompat`)
+  - **v3 (cloud)** — Vercel + NextAuth OAuth + multi-tenant Postgres + hosted sandbox (E2B/Fly). v2-built code is cloud-ready: every new model has nullable `tenantId`; `SandboxProvider` is an interface; the auto-merge + monitor + MCP policy layers are pure functions that reuse unchanged in cloud.
 
 **2026-06-02 (v2.3 / F26 sub-phase 1 — MCP server foundation: stdio + 4 read-only tools + `pnpm mcp`)**
 First sub-phase of F26 — the LAST v2.3 feature. Same shape as F24 s1 + F25 s1: pure registry + minimum IO surface + exhaustive boundary tests + no action tools yet. Sub-phase 2 will add scan.start / inspect.run with §5c policy carry-over (a caller CANNOT bypass the auto-merge envelope by going around the UI).

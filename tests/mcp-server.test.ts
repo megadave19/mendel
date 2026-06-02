@@ -27,6 +27,13 @@ void mocks
 
 vi.mock('@/lib/db', () => ({ db: {} as Record<string, unknown> }))
 
+// tools.ts imports runScan + inspectApi + encrypt at module-load time.
+// Mock those edges here so the server's import chain doesn't trip env
+// validation (ENCRYPTION_KEY etc).
+vi.mock('@/lib/agent/runner', () => ({ runScan: vi.fn() }))
+vi.mock('@/lib/crypto', () => ({ encrypt: (s: string) => `enc:${s}` }))
+vi.mock('@/lib/agent/inspect', () => ({ inspectApi: vi.fn() }))
+
 import { startMcpServer } from '@/mcp/server'
 import { ALL_TOOLS } from '@/lib/mcp/tools'
 
@@ -51,11 +58,21 @@ function makeFakeDeps() {
   const zero = vi.fn().mockResolvedValue(0)
   return {
     db: {
-      scan: { findMany: noop, count: zero, findUnique: vi.fn().mockResolvedValue(null) },
-      issue: { findMany: noop },
+      scan: {
+        findMany: noop, count: zero,
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'scan-1', repoUrl: '', startedAt: new Date() }),
+      },
+      issue: { findMany: noop, findUnique: vi.fn().mockResolvedValue(null) },
       inspection: { findMany: noop, count: zero },
+      monitorSchedule: { findMany: noop },
     } as never,
     now: () => new Date('2026-06-01T12:00:00Z'),
+    io: {
+      runScan: vi.fn().mockResolvedValue(undefined) as never,
+      inspectApi: vi.fn().mockResolvedValue({ confidence: { bucket: 'medium' } }) as never,
+      encrypt: ((s: string) => `enc:${s}`) as never,
+    },
   }
 }
 
