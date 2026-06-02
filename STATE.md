@@ -2,7 +2,7 @@
 
 > Living log. Read at session start. Update after every meaningful session or state change.
 > **Last updated:** 2026-06-02
-> **Current phase:** **v2.3 IN PROGRESS** — **F25 sub-phase 2 complete: F25 done end-to-end.** REST endpoints (`GET/PUT/DELETE /api/monitor-schedules/[repoFullName]`) + `<MonitorPanel />` for per-repo schedule + recent `monitor.*` log feed. PAT is encrypted on PUT, NEVER returned in GET (only `hasPat` boolean) + wiped from React state after save. Live round-trip on dev server verified (GET defaults → PUT with PAT → readback hides PAT → DELETE clean). Bench unchanged at 14/14 100/100. **F24 + F25 both done; F26 MCP server next (last v2.3 feature).** Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` → `05b7164` → `5b20899` (F25 s1) → `<F25 s2>`.
+> **Current phase:** **v2.3 IN PROGRESS** — F26 **sub-phase 1 complete**: pure tool registry (`lib/mcp/tools.ts`) + 4 read-only tools (health/scan.list/scan.get/inspect.list) + `mcp/server.ts` with stdio transport + `pnpm mcp` script + 24 tests (registry contracts + invokeTool validation + server wiring). Live JSON-RPC handshake verified end-to-end: `initialize` → server identity; `tools/list` → 4 tools with valid JSON-Schema; `tools/call mendel.health` → returns server time. PATs never in tool results. Sub-phase 2 next (action tools with §5c policy carry-over). Bench unchanged at 14/14 100/100. Commits `…91426f2` → `…3ca67ad` → `…05b7164` (F24) → `…5b20899` → `…6001709` (F25) → `<F26 s1>`.
 
 ---
 
@@ -109,6 +109,33 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-02 (v2.3 / F26 sub-phase 1 — MCP server foundation: stdio + 4 read-only tools + `pnpm mcp`)**
+First sub-phase of F26 — the LAST v2.3 feature. Same shape as F24 s1 + F25 s1: pure registry + minimum IO surface + exhaustive boundary tests + no action tools yet. Sub-phase 2 will add scan.start / inspect.run with §5c policy carry-over (a caller CANNOT bypass the auto-merge envelope by going around the UI).
+- **`@modelcontextprotocol/sdk@1.29.0`** installed; SDK gives us `McpServer.registerTool(name, {description, inputSchema}, cb)` + `StdioServerTransport` out of the box. Zod → JSON-Schema conversion happens automatically when we pass the schema's raw shape.
+- **`lib/mcp/tools.ts`** (new) — pure registry. Each tool is a `ToolRecord<I>` with `{ name, description, inputSchema (Zod), handler(input, deps) }`. `defineTool` preserves the inferred input type. The frozen `ALL_TOOLS` list collects every tool. The variance-erased `AnyTool = ToolRecord<any>` lets us store heterogeneous tools in one list (runtime safety comes from `tool.inputSchema.safeParse`).
+- **`invokeTool(tool, rawInput, deps)`** — the validation+execution boundary the server wrapper uses. Returns `{ok:true, result} | {ok:false, error}`; on Zod failure the error names the failing path; on a handler throw it catches and returns the message (NEVER bubbles to the SDK, which would otherwise drop the diagnostic).
+- **Sub-phase 1 tools** (all read-only, all under `mendel.*` namespace):
+  - `mendel.health` — server time + static OK; safest possible tool to invoke first; no DB access
+  - `mendel.scan.list` — newest-first paginated; `limit ≤ 50`; optional `status` enum; Prisma `select` narrows fields explicitly so NO encryptedPat can leak
+  - `mendel.scan.get` — single scan by id + issue summaries; parses `confidenceSummary` JSON; surfaces malformed blobs as `{__parseError:true}` instead of crashing
+  - `mendel.inspect.list` — F22 inspections newest-first; optional `packageName` filter
+- **`mcp/server.ts`** (new) — long-running Node process. Builds an `McpServer`, iterates `ALL_TOOLS`, registers each via `registerTool`. Stdout is reserved for MCP JSON-RPC framing; stderr (`console.error`) is the worker's intentional log surface. `require.main === module` check makes the file usable both as a library (for tests via `startMcpServer({serverImpl, deps, skipTransport})`) and as the CLI entry.
+- **Security boundary (CLAUDE.md §5 r17 + §11 forbidden):**
+  - Every input is Zod-validated AT THE TOOL BOUNDARY before the handler runs
+  - PATs / encryptedPat NEVER returned — every list query uses explicit Prisma `select` to narrow fields; a regression assertion in the tests does a `JSON.stringify(result)` substring search for the literal "encryptedPat" and "pat" to catch a future field-leak refactor
+  - `pnpm mcp` exposes the server on STDIO ONLY — `@modelcontextprotocol/sdk/server/express.js` is intentionally NOT imported (the §11 forbidden pattern "exposing MCP as an unauthenticated HTTP endpoint" is structurally impossible from this entry point)
+- **`package.json`** — `"mcp": "tsx mcp/server.ts"`. Run with `pnpm mcp`.
+- **Tests (+24 new):**
+  - **`tests/mcp-tools.test.ts`** (18): registry contracts (unique names, mendel.* namespace, expected sub-phase 1 set); `invokeTool` validation (happy path; bad input names failing field; strict-mode refusal of unknown fields; handler-throw caught + returned not bubbled; `undefined` input normalized to `{}`); per-tool shape pins (`scanListTool` Prisma where forwarding; `scanGetTool` honest "not found" + JSON parse fallback + length caps; `inspectionListTool` packageName filter + ISO timestamps)
+  - **`tests/mcp-server.test.ts`** (6): every `ALL_TOOLS` entry registered exactly once; every registration carries a non-empty description + an inputSchema raw-shape (defensive guard against SDK regression); handler happy path returns `{content:[{type:"text", text:<json>}]}`; error path returns `{isError:true, content:[{type:"text", text:<reason>}]}`; injected fake Prisma propagates errors honestly (a `db boom` rejection surfaces in the handler's error result, not as a thrown exception to the SDK)
+- **Live JSON-RPC handshake verified end-to-end:**
+  - `initialize` → returns `{name:"mendel-mcp", version:"0.1.0"}` + capabilities
+  - `tools/list` → returns 4 tools with valid `additionalProperties:false` JSON-Schemas (strict mode preserved through the SDK to the wire)
+  - `tools/call mendel.health` → returns `{ok:true, server:"mendel-mcp", serverTime:"…"}` wrapped in the MCP `content[]` shape
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **675 passed** / 22 skipped (+24 new) · `pnpm eval` ✅ 14/14 100%/100% **no regression vs. baseline** · `pnpm test:docker` not re-run (no Docker change).
+- **Variance gotcha caught + fixed:** `ToolRecord<I>` is contravariant in `I`, so a heterogeneous registry can't be `ToolRecord<unknown>[]`. Erased the input type to `AnyTool = ToolRecord<any>` with a one-line eslint-disable + the runtime Zod safety net is the actual guard. Same shape the MCP SDK uses internally for tool storage.
+- **Next:** F26 sub-phase 2 — action tools with policy gating. Candidate tools: `mendel.scan.start` (gated by §5c.1 eligibility), `mendel.inspect.run` (calls existing F22 orchestrator), `mendel.automerge.preview` (returns the §5c verdict without firing — read-only honesty surface). Then v2.3 closes.
 
 **2026-06-02 (v2.3 / F25 sub-phase 2 — REST endpoints + Settings UI MonitorPanel; F25 COMPLETE)**
 Closes F25 end-to-end. Mendel now has a full surface for the continuous monitor: REST endpoints (GET/PUT/DELETE) to manage schedules with encrypted PATs, plus a `<MonitorPanel />` that mirrors AutoMergePanel. Default-OFF schema still binds; the user MUST type a repo name + supply a PAT + tick the ack to enable a schedule.
