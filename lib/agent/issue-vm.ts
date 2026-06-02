@@ -19,6 +19,7 @@ import { ConfidenceScoreSchema } from '@/lib/agent/confidence/score'
 import type { Diagnosis } from '@/lib/agent/phases/diagnose'
 import type { FilePatch } from '@/lib/agent/patching/full-file'
 import type { StaleDep } from '@/lib/agent/phases/detect'
+import { validateLanguageId } from '@/lib/agent/lang/types'
 import type { IssueVM, DiffLine } from '@/components/phase-d/types'
 
 // Standard v1.0 disclosures — always included (CLAUDE.md §5b rule 3).
@@ -168,7 +169,12 @@ export function persistIssueData(args: {
     packageDir: packageDir ?? null,
     // v2.2 / F23a — pre-F23 callers (pre-adapter) omit this; back-compat
     // preserved by Prisma defaulting `Issue.language` to null.
-    language: language ?? null,
+    // v2.2.x polish — validated through the application-layer enum
+    // (Prisma + SQLite doesn't support native enums on Prisma 5.22).
+    // Pre-F23 callers pass undefined → null (back-compat); F23+ callers
+    // pass a real LanguageId → validated → persisted. A typo throws here
+    // instead of silently writing a non-language string.
+    language: language === undefined ? null : validateLanguageId(language),
   }
 }
 

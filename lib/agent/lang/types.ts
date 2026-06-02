@@ -21,6 +21,7 @@
  * signals agree. Encoded here so it can never silently inflate.
  */
 
+import { z } from 'zod'
 import type { BreakingChange } from '@/lib/agent/signals/changelog'
 import type {
   SemanticDiff,
@@ -30,8 +31,37 @@ import type { ConfidenceBucket } from '@/lib/agent/confidence/score'
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/** Identifier the runner persists on Scan.language + Issue.language. */
-export type LanguageId = 'typescript' | 'python' | 'go' | 'rust'
+/**
+ * Identifier the runner persists on Scan.language + Issue.language.
+ *
+ * **Application-layer enum** (v2.2.x polish). Prisma 5.22 + SQLite does
+ * NOT support native enums (`prisma validate` errors on `enum X { … }`
+ * with the sqlite provider). The v2.2.x polish item "Issue.language →
+ * Prisma enum" therefore lands as an application-layer enum: a Zod
+ * schema + a `validateLanguageId` helper enforce the closed set at every
+ * write boundary (runner → Scan.language, issue-vm → Issue.language).
+ *
+ * The closed set IS the type below — adding a new adapter requires
+ * extending this enum, which is the same opt-in discipline a Prisma
+ * native enum would impose. The check happens at runtime where the
+ * column is written, so a programmer typo or a future buggy adapter
+ * can't silently persist a non-language string.
+ */
+export const LanguageIdSchema = z.enum(['typescript', 'python', 'go', 'rust'])
+export type LanguageId = z.infer<typeof LanguageIdSchema>
+
+/** Throws if `raw` isn't a known LanguageId. Use at every write
+ *  boundary that persists the column. Tests assert it refuses
+ *  typos like 'typscript' / 'go-lang' / empty string. */
+export function validateLanguageId(raw: unknown): LanguageId {
+  const parsed = LanguageIdSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid Language value: ${JSON.stringify(raw)} (valid: ${LanguageIdSchema.options.join(', ')})`,
+    )
+  }
+  return parsed.data
+}
 
 /** The shape `detectStaleDeps`-class functions return. */
 export interface StaleDepLite {

@@ -5,6 +5,7 @@ import simpleGit from 'simple-git'
 import { cloneRepo, getRepoMeta, assessSubmitCapability, listOpenIssues } from '@/lib/github'
 import { detectWorkspace, type PackageRef, type WorkspaceDetection } from './workspace/detect'
 import { selectAdapter } from './lang/registry'
+import { validateLanguageId } from './lang/types'
 import { pickIssueForDep, formatIssueReference } from './issue-link'
 import type { RepoIssue } from '@/lib/github/types'
 // v2.2 / F23a — `detectStaleDeps` is routed via `adapter.detectStaleDeps`
@@ -265,7 +266,11 @@ export async function runScan(
       where: { id: scanId },
       data: {
         workspaceKind: workspace.kind === 'single' ? null : workspace.kind,
-        language: adapter.id,
+        // v2.2.x polish — validated through the application-layer enum
+        // (Prisma + SQLite doesn't support native enums on this version).
+        // A typo or buggy adapter id throws here instead of silently
+        // persisting a non-language string.
+        language: validateLanguageId(adapter.id),
       },
     })
 
