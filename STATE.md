@@ -99,6 +99,8 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 
 ## Backlog (deferred — not blocking the next phase)
 
+> **STRATEGIC NOTE (2026-06-02) — post-v3 moat & monetization.** Owner direction: Mendel **cannot be just an AI wrapper**; after v3 we phase in features that justify paying — for the *quality, automation, trust, and time-saved*, not for tokens. Two structural moats an LLM-wrapper can't clone: (1) the **verification harness** (sandbox install+test+smoke + calibrated honesty), (2) the **data flywheel** (regression DB of real upgrade outcomes → "known-good upgrade path" intelligence that improves with scale). Candidate paid directions (CVE-driven upgrades · org policy/governance + audit · fleet management · guaranteed-green PRs · auto-rollback/canary · migration intelligence · private analyzers). **Full thesis lives in PRD §12c** (pre-brief, not scoped). Honesty floors (§5b/§5c/§5d) still bind while monetizing — the trust IS the product. Pick up: when v3 ships + we're ready to plan v4+.
+
 | # | Item | Why deferred | Trigger to pick up |
 | --- | --- | --- | --- |
 | B1 | **Per-dep retry button** on `/scan/[id]` — if Phase B fails for one dep, retry just that dep without re-scanning the whole repo | Nice-to-have QoL; no honesty/correctness gap; today we re-scan the whole repo | After v2.0 (eval bench) lands, or when a real user hits the "had to wait 5 min for 1 dep to retry" pain |

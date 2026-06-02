@@ -346,6 +346,29 @@ v2 deepens the engine **on the local machine** — no cloud rearchitecture (that
 
 **Out of scope for v3 (honest boundaries):** no user file uploads (smallest attack surface); no roll-your-own auth; no cross-tenant features.
 
+## 12c. Post-v3 — Moat & Monetization (pre-brief, NOT scoped)
+
+> Placeholder + thesis captured 2026-06-02. Phased properly *after* v3 ships. Mendel **cannot be just an AI wrapper** — an LLM + GitHub MCP can already generate a patch and open a PR. What an AI wrapper structurally **cannot** do is (a) *verify* the patch in a real sandbox at scale and (b) *learn* from millions of real upgrade outcomes. Those two compound into a moat; everything users pay for must deepen them.
+
+**The thesis (what people pay for):** not "it writes a patch" — that's commoditized. They pay for **trustworthy autonomy**: upgrades that are *verified, calibrated, and honestly scored* rather than *plausibly generated*, applied at a *scale no human wants to babysit*. The verification harness is the product; the accumulated outcome data is the durable advantage.
+
+**Two structural moats (an LLM-wrapper has neither):**
+1. **The verification harness** — install + test + smoke in an isolated sandbox, with calibrated dual-signal confidence + an honesty floor. This is the "it actually compiles + boots, and Mendel tells you when it doesn't" guarantee. A prompt can't run code.
+2. **The data flywheel** — every scan + PR-outcome (merged/reverted/rejected) feeds a regression DB. Over time: "this exact bump broke N repos like yours; here's the patch that verified green." Gets smarter with scale; cross-tenant (anonymized) success patterns sharpen calibration. A new entrant starts at zero.
+
+**Candidate paid directions to explore later (not commitments — just where to dig):**
+- **Security/CVE-driven upgrades** — not "stale" but "this version has a known CVE; here's the *verified* safe upgrade path." Ties to a budget line (security) people already pay for.
+- **Org policy & governance** — team rules (no major bumps without review, license/security gates), audit trail, compliance-shaped reporting. Enterprises pay for governance + the paper trail.
+- **Fleet management** — schedule + batch-upgrade across many repos / a monorepo org from one dashboard; the convenience-at-scale play.
+- **Guaranteed-green / "merge with confidence"** — productize the verification: Mendel only surfaces upgrades that passed the full harness; sell the trust + the saved review time.
+- **Auto-rollback / canary** — if an auto-merged upgrade breaks something downstream, detect + revert. Closes the autonomy loop safely.
+- **Migration intelligence** — the flywheel surfaced as a product: cross-repo "known-good upgrade path" for hard majors (the `lit 2→3`-class migrations no auto-patcher fully solves today).
+- **Private/custom analyzers** — internal registries, enterprise deps, bespoke semantic-diff per ecosystem.
+
+**Pricing intuition (to validate later):** free tier = analysis + a few owned-repo scans (the lead magnet, the calibration demo); paid = scale (many repos, continuous monitoring, auto-merge), governance (org policy + audit), and the data-backed migration intelligence. Charge for *convenience, trust, and time saved* — not for tokens.
+
+**Non-negotiable while monetizing:** the §5b/§5c/§5d honesty floors still bind. We never inflate confidence to ship more PRs, never relax the auto-merge envelope to look more capable, never spam maintainers for growth. The trust IS the product; selling it out kills the moat.
+
 ## 13. UX / UI Design Language
 
 (Unchanged across phases — design is shipped in v1.0 in full.)
