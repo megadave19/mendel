@@ -1,8 +1,8 @@
 # STATE.md — Mendel Session State
 
 > Living log. Read at session start. Update after every meaningful session or state change.
-> **Last updated:** 2026-06-01
-> **Current phase:** **v2.3 IN PROGRESS** — **F24 sub-phase 3 complete: F24 done end-to-end.** Settings UI panel for per-repo opt-in (`AutoMergePanel`) + REST endpoints (`/api/repo-settings/[repoFullName]` GET/PUT, `/api/agent-log` GET) + required acknowledgement copy + recent §5c decisions viewer. Wired both endpoints against live SQLite + verified round-trip. Default-OFF schema means every existing scan path still skips honestly with §5c r1; bench unchanged at 14/14 100/100. **F24 auto-merge is complete; F25 monitor cron next.** Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` (F24 s2) → `<F24 s3>`.
+> **Last updated:** 2026-06-02
+> **Current phase:** **v2.3 IN PROGRESS** — F25 **sub-phase 1 complete**: `MonitorSchedule` schema (default OFF + encrypted PAT) + pure `scheduler.ts` policy (cron validation + decideFire with MIN_GAP_SECONDS + concurrency cap) + `worker/monitor.ts` node-cron orchestrator + `pnpm monitor` script + 20 boundary tests. Live worker smoke verified (registers PR poller; finds no enabled schedules; clean shutdown). Sub-phase 2 next (REST endpoints + Settings UI). Bench unchanged at 14/14 100/100. Commits `42f9097` → `2219c0d` → `ac7525f` → `b0e2ef4` → `30ab5c9` → `91426f2` → `3ca67ad` → `05b7164` (F24 done) → `<F25 s1>`.
 
 ---
 
@@ -109,6 +109,27 @@ Round 1 review = "does it match the brief?" Then round 2 = "does it feel right?"
 ---
 
 ## Recent Decisions (newest first)
+
+**2026-06-02 (v2.3 / F25 sub-phase 1 — continuous-monitor foundation: schema + pure scheduler + node-cron worker + `pnpm monitor`)**
+First sub-phase of F25. Same shape as F24 s1 + F23* s1: pure policy + minimum IO surface + exhaustive boundary tests + no UI yet. The worker is fully functional headless (`pnpm monitor`); sub-phase 2 will land the REST endpoints + Settings UI for managing schedules.
+- **`prisma/schema.prisma`** — `MonitorSchedule` model. **`enabled Boolean @default(false)`** at the SCHEMA LEVEL — same opt-in discipline as RepoSetting. `encryptedPat String` (CLAUDE.md §5 r5: AES-256-GCM; never logged, never returned in REST responses). `cronExpression String @default("0 */6 * * *")` (every 6h). `lastFiredAt` / `lastErrorAt` / `lastError` give the Settings UI a "monitor is failing" surface without grepping the worker log. `tenantId String?` v3-ready. `prisma db push` applied.
+- **Gotcha caught + fixed:** schema doc-comment containing the cron sample `'0 */6 * * *'` (with literal `*/`) closed the generated TypeScript JSDoc early, corrupting the Prisma client `.d.ts`. Same issue then bit `lib/agent/monitor/scheduler.ts`. Rewrote both with line comments + a note in the source so a future contributor doesn't repeat it.
+- **`lib/agent/monitor/scheduler.ts`** (new) — pure policy module:
+  - **`validateCronExpression(raw)`** — strict 5-field regex (`*`, integers, `*/N` steps, `A-B` ranges, `A,B,C` lists). Refuses `@daily` / `@hourly` / letter shortcuts (node-cron 4.x is strict) + caps length at 100 chars (defensive). Returns `{ok:true} | {ok:false, reason}` with the BAD FIELD INDEX in the reason text so the user can fix the right slot.
+  - **`decideFire({enabled, lastFiredAt, inFlightCount, now})`** — §5b honest gate. Returns `{shouldFire: true}` OR `{shouldFire: false, reason}` (never silent). Rules in priority order: (1) `enabled=false` → block; (2) `inFlightCount ≥ MAX_CONCURRENT_SCANS` (2) → block; (3) `lastFiredAt` within `MIN_GAP_SECONDS` (5 min) → block. The MIN_GAP_SECONDS clamp protects a typo'd `* * * * *` from draining GitHub's 5000/h rate limit.
+- **`worker/monitor.ts`** (new) — long-running Node process orchestrator:
+  - **Startup:** loads every `enabled = true` row, validates each cron expression via the scheduler (skipping + logging any invalid ones BEFORE they reach node-cron), registers one task per row, plus a PR-state poller on `*/10 * * * *` (reuses the existing `pollPrStates`).
+  - **On fire:** `decideFire` first → if NO, write a `monitor.fire` AgentLog row with the binding reason + skip honestly; if YES, decrypt PAT in-memory (NEVER logged), generate a scan id, write the start, call `runScan` (the same code path the UI uses), update `lastFiredAt` / `lastError` on completion. The `inFlightCount` counter wraps the call in try/finally so a crashed scan still releases the slot.
+  - **Reload:** `reloadSchedules()` is idempotent — stops + replaces existing tasks (so a cron-expression edit takes effect) and stops orphan tasks whose row was disabled/deleted. Sub-phase 2's REST endpoint will trigger this when a setting changes.
+  - **Shutdown:** SIGINT/SIGTERM handler stops every cron task before exit. Safe under pm2 / launchd.
+  - **Security boundary (CLAUDE.md §5 r17):** every input is Zod-validated through the scheduler module before reaching node-cron. PAT is decrypted at fire time only. `console.log` is the worker's intentional log surface — no PII / no PAT ever passes through it (the scan id + repoFullName + reason text are the only payload fields).
+- **`package.json`** — `"monitor": "tsx worker/monitor.ts"`. Run with `pnpm monitor`.
+- **Tests (+20):**
+  - **`tests/monitor-scheduler.test.ts`** (16): cron validation across 5-field shapes, step/range/list combos, refusal of `@daily`/letter shortcuts/wrong field counts/empty/100-char overflow, bad-field index named in reason; `decideFire` rule order (disabled > concurrency > gap), MIN_GAP_SECONDS boundary at 5 min exact, in-flight cap surfaced in reason.
+  - **`tests/monitor-worker.test.ts`** (4): `startMonitorWorker` registers ONE task per enabled row + PR poller; calls `findMany` with `where:{enabled:true}` (the SQL floor is the contract); refuses + skips invalid cron expressions (BOGUS never reaches node-cron); `reloadSchedules` STOPS orphan tasks. Mocks `node-cron`, `@/lib/db`, `@/lib/crypto`, runner, poller — pure orchestration verification with no clock burn.
+- **Live worker smoke verified:** `pnpm monitor` starts, prints `Mendel monitor starting (max concurrent scans=2)`, registers PR-state poller, finds no enabled MonitorSchedule rows (correct: nobody opted in yet), clean SIGTERM shutdown.
+- Verification (all six surfaces): typecheck ✅ · lint ✅ · `pnpm test` ✅ **632 passed** / 22 skipped (+20 new) · `pnpm eval` ✅ 14/14 100%/100% no regression · `pnpm test:docker` not re-run (no Docker change).
+- **Next:** F25 sub-phase 2 — REST endpoints (`GET/PUT /api/monitor-schedules/[repoFullName]` + reload trigger) + Settings UI (`<MonitorPanel />` mirroring AutoMergePanel: per-repo schedule + enable toggle + lastFired/lastError display + recent `monitor.fire` log feed). Then F26 MCP server.
 
 **2026-06-01 (v2.3 / F24 sub-phase 3 — Settings UI + REST endpoints for opt-in; F24 auto-merge COMPLETE)**
 Closes F24 end-to-end. Mendel now has a full surface for the §5c auto-merge feature: REST endpoints to read + write `RepoSetting`, a Settings panel for per-repo opt-in with required acknowledgement copy, and a recent-decisions viewer that pulls from `AgentLog`. Default-OFF at the schema level continues to be the only setting that matters — until the user explicitly types a repo name, ticks the acknowledgement, and clicks Save, the gate is dormant.

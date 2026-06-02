@@ -178,6 +178,59 @@ model RejectionPattern {
   embedding       Bytes?
 }
 
+/// v2.3 / F25 — per-repo monitor schedule.
+///
+/// The worker (worker/monitor.ts) loads every `enabled = true` row at
+/// startup and registers a node-cron job per `cronExpression`. On fire
+/// the worker calls `runScan` headless with the stored options.
+///
+/// **Honesty rules baked into the schema:**
+///  - `enabled` defaults FALSE — same opt-in discipline as RepoSetting.
+///    A new row is created OFF; the user MUST flip it on explicitly.
+///  - `encryptedPat` stores the PAT under AES-256-GCM (CLAUDE.md §5 r5).
+///    The worker decrypts on each fire — never logged, never returned in
+///    REST responses.
+///  - `repoUrl` is the canonical https://github.com/owner/name shape the
+///    runner already accepts. We deliberately don't normalize-to-owner+repo
+///    in the schema so the existing runner code path is unchanged.
+///  - `lastFiredAt` lets the scheduler skip a job that ran recently (the
+///    `MIN_GAP_SECONDS` policy in lib/agent/monitor/scheduler.ts) so a
+///    misconfigured `* * * * *` doesn't drain rate limits.
+///
+/// `tenantId` is v3-ready (CLAUDE.md §1).
+model MonitorSchedule {
+  id              String    @id @default(cuid())
+  /// "owner/name" — unique key. Mirrors RepoSetting's key shape.
+  repoFullName    String    @unique
+  /// Full clone URL the runner uses: https://github.com/owner/name
+  repoUrl         String
+  /// 5-field cron expression. Validated by the scheduler against a tight
+  /// regex before being passed to node-cron. Default fires every 6 hours
+  /// so a new row, if enabled, scans at a sane cadence.
+  cronExpression  String    @default("0 */6 * * *")
+  /// CLAUDE.md §5c r1-class opt-in. Default FALSE; the worker only
+  /// registers a job when this flips true.
+  enabled         Boolean   @default(false)
+  /// AES-256-GCM-encrypted PAT (CLAUDE.md §5 rule 5). Never logged.
+  encryptedPat    String
+  /// Last successful scan run (worker writes this on completion). Used by
+  /// the scheduler to enforce MIN_GAP_SECONDS — a too-frequent cron
+  /// expression that already fired in the last gap is skipped honestly.
+  lastFiredAt     DateTime?
+  /// Last scan error (worker writes on failure). Null after a successful run.
+  /// Lets the Settings UI surface "monitor is failing" without forcing the
+  /// user to dig through AgentLog.
+  lastErrorAt     DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenantId        String?
+
+  @@index([repoFullName])
+  @@index([enabled])
+  @@index([tenantId])
+}
+
 /// v2.3 / F24 — per-repo auto-merge configuration.
 ///
 /// **CLAUDE.md §5c rule 1: opt-in, default OFF — enforced at the SCHEMA level.**
