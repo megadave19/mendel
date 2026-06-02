@@ -17,8 +17,32 @@ const SYSTEM_INSTRUCTION =
 
 type Provider = 'gemini' | 'github-models'
 
+/**
+ * Resolve the LLM provider from `LLM_PROVIDER`.
+ *
+ * Accepts common aliases so a natural value like `LLM_PROVIDER=github`
+ * works (it previously fell through to gemini silently — the
+ * MeteoalarmCard scan died with "GEMINI_API_KEY is not set" because
+ * `'github' !== 'github-models'` routed to gemini while only the
+ * GitHub-models token was configured). Recognized:
+ *   - gemini, google            → 'gemini'
+ *   - github, github-models,
+ *     gh-models, githubmodels    → 'github-models'
+ * Unset → 'gemini' (back-compat default). An UNRECOGNIZED non-empty
+ * value throws loudly at call time rather than silently mis-routing —
+ * a misconfig should fail honestly, not pick a provider you didn't ask
+ * for (CLAUDE.md §5b honesty).
+ */
 export function getProvider(): Provider {
-  return process.env.LLM_PROVIDER === 'github-models' ? 'github-models' : 'gemini'
+  const raw = (process.env.LLM_PROVIDER ?? '').trim().toLowerCase()
+  if (raw === '') return 'gemini'
+  if (raw === 'gemini' || raw === 'google') return 'gemini'
+  if (raw === 'github-models' || raw === 'github' || raw === 'gh-models' || raw === 'githubmodels') {
+    return 'github-models'
+  }
+  throw new Error(
+    `LLM_PROVIDER="${process.env.LLM_PROVIDER}" is not recognized. Use "gemini" or "github-models".`,
+  )
 }
 
 function stripFences(text: string): string {

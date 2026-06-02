@@ -11,14 +11,24 @@ describe('getProvider', () => {
     expect(getProvider()).toBe('gemini')
   })
 
-  it('selects github-models only when explicitly set', () => {
+  it('selects github-models when set (incl. the "github" alias)', () => {
     process.env.LLM_PROVIDER = 'github-models'
+    expect(getProvider()).toBe('github-models')
+    // 2026-06 fix: `github` is now a recognized alias. Previously it
+    // SILENTLY fell back to gemini → caused "GEMINI_API_KEY is not set"
+    // when only the GitHub-models token was configured. Full alias +
+    // fail-loud matrix lives in tests/llm-provider.test.ts.
+    process.env.LLM_PROVIDER = 'github'
     expect(getProvider()).toBe('github-models')
   })
 
-  it('falls back to gemini for any unrecognized value', () => {
+  it('THROWS loudly on an unrecognized value (no silent mis-route)', () => {
+    // Behavior change (2026-06): the old "silently fall back to gemini"
+    // encoded a footgun — a typo'd provider quietly mis-routed and then
+    // failed with a misleading key error. Per CLAUDE.md §5b a misconfig
+    // must fail honestly, naming the valid options.
     process.env.LLM_PROVIDER = 'something-else'
-    expect(getProvider()).toBe('gemini')
+    expect(() => getProvider()).toThrow(/not recognized/)
   })
 })
 
