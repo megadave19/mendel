@@ -14,7 +14,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:docker": "DOCKER_INTEGRATION=1 vitest run iptables-allowlist-container cache-eviction-container sandbox-smoke-container workspace-install-container python-griffe-container go-apidiff-container rust-semver-checks-container",
+    "test:docker": "DOCKER_INTEGRATION=1 vitest run iptables-allowlist-container iptables-parity-container cache-eviction-container sandbox-smoke-container workspace-install-container python-griffe-container go-apidiff-container rust-semver-checks-container",
     "monitor": "tsx worker/monitor.ts",
     "mcp": "tsx mcp/server.ts",
     "smoke": "playwright test",

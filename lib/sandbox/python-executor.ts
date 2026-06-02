@@ -85,8 +85,21 @@ export async function runGriffeDiff(
     'run', '--rm',
     '--network=bridge',
     `--memory=${MEMORY_CAP}`,
-    // The image's USER directive sets the runtime user — we don't pass --user
-    // here because the image's mendel user is non-root by construction.
+    // v2.2.x polish — iptables egress allowlist INFRASTRUCTURE parity
+    // with the Node sandbox (CLAUDE.md §5 r12). The image now ships
+    // iptables + the entrypoint hook + gosu drop-to-user; the runtime
+    // ALLOWLIST is supplied by the caller, mirroring the Node sandbox
+    // contract where `buildAllowlist()` produces a user-tunable host
+    // list. When the env var is empty (the default below — the §11b.1
+    // tests showed that hardcoding a tight allowlist breaks pip's
+    // dynamic CDN routing), the entrypoint logs + leaves bridge open
+    // (back-compat with pre-polish behavior). Operators who want
+    // filtering can supply `MENDEL_PYTHON_ALLOWLIST` via env or
+    // upgrade this to read from a per-scan setting.
+    '--cap-add=NET_ADMIN',
+    '-e', `MENDEL_ALLOWLIST=${process.env.MENDEL_PYTHON_ALLOWLIST ?? ''}`,
+    // The image's entrypoint drops to the mendel user via gosu after
+    // applying iptables; we don't pass --user here.
     PYTHON_IMAGE_NAME,
     'griffe-diff',
     packageName,

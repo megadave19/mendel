@@ -100,6 +100,13 @@ export async function runApidiff(
     'run', '--rm',
     '--network=bridge',
     `--memory=${MEMORY_CAP}`,
+    // v2.2.x polish — iptables INFRASTRUCTURE parity (§5 r12). Allowlist
+    // is opt-in via MENDEL_GO_ALLOWLIST env var; empty = entrypoint
+    // leaves bridge open (back-compat). Hardcoding the proxy.golang.org
+    // set was too tight for the §11b.1 test — Go's module index can
+    // serve from CDN IPs we don't resolve at startup.
+    '--cap-add=NET_ADMIN',
+    '-e', `MENDEL_ALLOWLIST=${process.env.MENDEL_GO_ALLOWLIST ?? ''}`,
     GO_IMAGE_NAME,
     'apidiff-diff',
     modulePath,

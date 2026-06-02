@@ -115,6 +115,13 @@ export async function runCargoSemverChecks(
     'run', '--rm',
     '--network=bridge',
     `--memory=${MEMORY_CAP}`,
+    // v2.2.x polish — iptables INFRASTRUCTURE parity (§5 r12). Allowlist
+    // is opt-in via MENDEL_RUST_ALLOWLIST; empty = entrypoint leaves
+    // bridge open (back-compat). cargo-semver-checks compiles deeply
+    // transitive deps that can pull from many sources at build time;
+    // hardcoding crates.io alone made the §11b.1 test fail.
+    '--cap-add=NET_ADMIN',
+    '-e', `MENDEL_ALLOWLIST=${process.env.MENDEL_RUST_ALLOWLIST ?? ''}`,
     RUST_IMAGE_NAME,
     'semver-checks-diff',
     crateName,

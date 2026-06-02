@@ -29,6 +29,9 @@ RUN apt-get update \
         git \
         ca-certificates \
         bash \
+        iptables \
+        gosu \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install apidiff. We DELIBERATELY allow Go to auto-fetch a newer
@@ -69,5 +72,14 @@ ENV GOPATH=/go
 ENV GOCACHE=/tmp/.go-cache
 ENV GOMODCACHE=/tmp/.go-mod-cache
 
-USER mendel
+# v2.2.x polish — iptables allowlist entrypoint (CLAUDE.md §5 r12).
+# Runs as root briefly to apply iptables rules from MENDEL_ALLOWLIST,
+# then drops to mendel via gosu. Empty allowlist OR no CAP_NET_ADMIN
+# → leaves bridge open (back-compat for dev).
+COPY setup-allowlist-debian.sh /usr/local/bin/setup-allowlist.sh
+RUN chmod +x /usr/local/bin/setup-allowlist.sh
+
+# NOTE: USER directive removed — entrypoint needs root for iptables and
+# drops to mendel via gosu. End-state runtime user is identical.
 WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/setup-allowlist.sh"]

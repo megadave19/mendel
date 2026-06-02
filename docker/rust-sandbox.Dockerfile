@@ -35,6 +35,8 @@ RUN apt-get update \
         cmake \
         curl \
         tar \
+        iptables \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-semver-checks. We track the latest released version
@@ -81,5 +83,11 @@ RUN chown -R mendel:mendel /usr/local/rustup /usr/local/cargo
 # (/usr/local/bin) are discoverable to the runtime user.
 ENV PATH="/usr/local/cargo/bin:/usr/local/bin:${PATH}"
 
-USER mendel
+# v2.2.x polish — iptables allowlist entrypoint (CLAUDE.md §5 r12).
+COPY setup-allowlist-debian.sh /usr/local/bin/setup-allowlist.sh
+RUN chmod +x /usr/local/bin/setup-allowlist.sh
+
+# NOTE: USER directive removed — entrypoint runs root briefly for
+# iptables then drops to mendel via gosu. End-state user identical.
 WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/setup-allowlist.sh"]

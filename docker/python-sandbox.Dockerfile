@@ -23,6 +23,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         build-essential \
+        iptables \
+        gosu \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # griffe is the analyzer. We pin to a major so a v2 release that changes the
@@ -44,8 +47,21 @@ RUN useradd --create-home --uid 1000 mendel
 COPY python-griffe-diff.py /usr/local/bin/griffe-diff
 RUN chmod +x /usr/local/bin/griffe-diff
 
+# v2.2.x polish — iptables allowlist entrypoint (CLAUDE.md §5 r12 parity
+# with the Node sandbox image). Runs as root briefly to apply iptables
+# OUTPUT rules from MENDEL_ALLOWLIST, then drops to the mendel user via
+# gosu. When MENDEL_ALLOWLIST is empty OR CAP_NET_ADMIN isn't granted,
+# the script logs + leaves the bridge open (back-compat for dev).
+COPY setup-allowlist-debian.sh /usr/local/bin/setup-allowlist.sh
+RUN chmod +x /usr/local/bin/setup-allowlist.sh
+
 # Default workdir for the sandboxed analysis. We write tarballs + install
 # trees under /tmp inside the container — /workspace is reserved for any
 # future host-bind use.
-USER mendel
+#
+# NOTE: no USER directive — the entrypoint runs as root briefly
+# (CAP_NET_ADMIN required for iptables), then exec's as mendel via gosu.
+# Pre-polish this image had `USER mendel` directly; we removed that to
+# enable the iptables hook. The end-state runtime user is identical.
 WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/setup-allowlist.sh"]
