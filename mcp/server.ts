@@ -22,10 +22,15 @@
  *    stdout — stdout is reserved for the MCP JSON-RPC framing).
  */
 
+import type { ZodRawShape } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { db } from '@/lib/db'
 import { ALL_TOOLS, invokeTool, type ToolDeps, type AnyTool } from '@/lib/mcp/tools'
+
+// AnyTool is referenced in JSDoc + transitively via the `tool` param's
+// inferred shape — keeping the explicit import documents the type.
+void (null as unknown as AnyTool)
 
 const SERVER_NAME = 'mendel-mcp'
 const SERVER_VERSION = '0.1.0'
@@ -63,14 +68,14 @@ export async function startMcpServer(opts: StartServerOptions = {}): Promise<Mcp
       tool.name,
       {
         description: tool.description,
-        // The MCP SDK accepts a ZodRawShape; we pass the schema's
-        // _def.shape (when the schema is a ZodObject). For non-object
-        // schemas we omit inputSchema and rely on invokeTool's
-        // validation — the SDK still routes calls through us.
-        // The runtime shape IS a ZodRawShape; the cast lets us match
-        // the SDK's generic typing without pulling its internal types.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        inputSchema: extractRawShape(tool.inputSchema) as any,
+        // The SDK accepts `ZodRawShape | AnySchema` per its registerTool
+        // signature. We pass the schema's raw shape (when the schema is
+        // a ZodObject) because that lets the SDK generate per-field
+        // JSON-Schema descriptions automatically — better client UX than
+        // passing the whole schema object. For non-object schemas
+        // `extractRawShape` returns undefined and the SDK falls back to
+        // a minimal schema; invokeTool still validates at the boundary.
+        inputSchema: extractRawShape(tool.inputSchema),
       },
       async (rawInput: unknown) => {
         const result = await invokeTool(tool, rawInput, deps)
@@ -109,10 +114,14 @@ export async function startMcpServer(opts: StartServerOptions = {}): Promise<Mcp
 
 /** Extract the underlying ZodRawShape from a ZodObject so the SDK can
  *  generate a JSON-Schema input descriptor. For non-object schemas we
- *  return undefined; the validation still runs through invokeTool. */
-function extractRawShape(schema: unknown): Record<string, unknown> | undefined {
+ *  return undefined; the validation still runs through invokeTool.
+ *
+ *  Return type is `ZodRawShape | undefined` — matching the SDK's
+ *  `ZodRawShapeCompat` shape (a record of Zod types). The runtime
+ *  guard checks shape is a function before calling it. */
+function extractRawShape(schema: unknown): ZodRawShape | undefined {
   if (!schema || typeof schema !== 'object') return undefined
-  const s = schema as { _def?: { shape?: () => Record<string, unknown>; typeName?: string } }
+  const s = schema as { _def?: { shape?: () => ZodRawShape; typeName?: string } }
   if (s._def?.shape && typeof s._def.shape === 'function') {
     try {
       return s._def.shape()
