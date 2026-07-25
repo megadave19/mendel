@@ -94,9 +94,6 @@ verified.
 
 ## Screenshots
 
-> Dark-mode only. Cyberpunk + CRT aesthetic — pixel-art mascot ("Bones"),
-> scan-line overlays, terminal chrome, tabular-num telemetry.
-
 ### Live Console — watch the agent reason in real time
 The agent streams every phase over SSE: clone → detect → diagnose (changelog +
 semantic-diff in the right per-language analyzer) → patch → three-phase sandbox
